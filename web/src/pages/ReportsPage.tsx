@@ -112,7 +112,7 @@ function Stat({ title, value, color }: { title: string; value: string; color?: s
 }
 
 function Overview({ query, enabled }: { query: string; enabled: boolean }) {
-  const { t, num, duration, date, lang } = useI18n();
+  const { t, num, of, duration, date, lang } = useI18n();
   const r = useReport<ReportOverview>("overview", query, enabled);
   const d = r.data;
   if (!d) return <Card loading />;
@@ -132,7 +132,7 @@ function Overview({ query, enabled }: { query: string; enabled: boolean }) {
         <Stat title={t("reports.orders_checked")} value={num(d.orders_checked)} color="#16a34a" />
         <Stat title={t("reports.orders_with_discrepancies")} value={num(d.orders_with_discrepancies)} color="#ea580c" />
         <Stat title={t("reports.skus_checked")} value={num(d.skus_checked)} />
-        <Stat title={t("reports.boxes_checked")} value={`${num(d.boxes_checked)} / ${num(d.boxes_ordered)}`} />
+        <Stat title={t("reports.boxes_checked")} value={of(d.boxes_checked, d.boxes_ordered)} />
         <Stat title={t("reports.boxes_scanned")} value={num(d.boxes_scanned)} color="#7c3aed" />
       </Row>
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
@@ -187,7 +187,7 @@ function Checkers({ query, enabled }: { query: string; enabled: boolean }) {
     n("mistakes", t("reports.mistakes")),
     n("corrections", t("reports.corrections")),
   ];
-  return <Table<CheckerReportRow> className="oc-nowrap" rowKey="checker_id" size="middle" loading={r.isLoading} dataSource={r.data?.rows ?? []} columns={columns} scroll={{ x: 1900 }} pagination={false} />;
+  return <Table<CheckerReportRow> className="oc-nowrap" rowKey="checker_id" size="middle" loading={r.isLoading} dataSource={r.data?.rows ?? []} columns={columns} tableLayout="auto" scroll={{ x: "max-content" }} pagination={false} />;
 }
 
 function Pickers({ query, enabled }: { query: string; enabled: boolean }) {
@@ -204,7 +204,7 @@ function Pickers({ query, enabled }: { query: string; enabled: boolean }) {
       <Typography.Paragraph type="secondary"><InfoCircleOutlined /> {t("reports.pickerHint")}</Typography.Paragraph>
       <Table<PickerReportRow>
         className="oc-nowrap"
-        rowKey="picker" size="middle" loading={r.isLoading} dataSource={r.data?.rows ?? []} pagination={false} scroll={{ x: 1300 }}
+        rowKey="picker" size="middle" loading={r.isLoading} dataSource={r.data?.rows ?? []} pagination={false} tableLayout="auto" scroll={{ x: "max-content" }}
         columns={[
           { title: t("reports.picker"), dataIndex: "picker", fixed: "left", width: 150, render: (v) => v || <Typography.Text type="secondary">{t("reports.noPicker")}</Typography.Text> },
           n("orders", t("menu.orders")),
@@ -252,18 +252,18 @@ function Reasons({ query, enabled, range, picker, setPicker }: {
 }
 
 function Operations({ query, enabled }: { query: string; enabled: boolean }) {
-  const { t, num, dateTime, duration } = useI18n();
+  const { t, num, of, dateTime, duration } = useI18n();
   const nav = useNavigate();
   const r = useReport<{ rows: OperationsRow[] }>("operations", query, enabled);
   return (
     <Table<OperationsRow>
       className="oc-nowrap"
-      rowKey="order_id" size="small" loading={r.isLoading} dataSource={r.data?.rows ?? []} scroll={{ x: 1700 }}
+      rowKey="order_id" size="small" loading={r.isLoading} dataSource={r.data?.rows ?? []} tableLayout="auto" scroll={{ x: "max-content" }}
       pagination={{ pageSize: 50, showSizeChanger: false, showTotal: (n) => `${t("common.total")}: ${num(n)}` }}
       rowClassName={(x) => (x.open_discrepancies ? "oc-row-issue" : "")}
       columns={[
         { title: t("order.reference"), dataIndex: "reference_id", fixed: "left", render: (v, x) => <a onClick={() => nav(`/orders/${x.order_id}`)}><Ltr>{v}</Ltr></a> },
-        { title: t("order.customer"), dataIndex: "customer", ellipsis: true, width: 180 },
+        { title: t("order.customer"), dataIndex: "customer", render: (v) => <span className="oc-clip" title={v}>{v}</span> },
         { title: t("common.status"), dataIndex: "status", render: (s) => <StatusTag status={s} /> },
         { title: t("order.checker"), dataIndex: "checker", render: (v) => v ?? t("common.none") },
         { title: t("reports.picker"), dataIndex: "picker", render: (v) => v || t("common.none") },
@@ -274,8 +274,8 @@ function Operations({ query, enabled }: { query: string; enabled: boolean }) {
         { title: t("reports.wait"), dataIndex: "wait_seconds", sorter: byNum("wait_seconds"), render: duration },
         { title: t("reports.elapsed"), dataIndex: "elapsed_seconds", sorter: byNum("elapsed_seconds"), render: duration },
         { title: t("reports.active_time"), dataIndex: "active_seconds", sorter: byNum("active_seconds"), render: duration },
-        { title: t("reports.lines"), render: (_, x) => `${num(x.skus_done)} / ${num(x.skus)}` },
-        { title: t("reports.boxes"), render: (_, x) => `${num(x.boxes_scanned)} / ${num(x.boxes_ordered)}` },
+        { title: t("reports.lines"), render: (_, x) => of(x.skus_done, x.skus) },
+        { title: t("reports.boxes"), render: (_, x) => of(x.boxes_scanned, x.boxes_ordered) },
         { title: t("reports.discrepancies"), dataIndex: "discrepancies", sorter: byNum("discrepancies"), render: (v, x) => (v ? <Tag color={x.open_discrepancies ? "red" : "orange"}>{num(v)}</Tag> : num(0)) },
       ]}
     />

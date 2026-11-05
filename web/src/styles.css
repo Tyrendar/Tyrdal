@@ -50,9 +50,14 @@ body {
 
 .ant-table-cell .ant-tag { margin-inline-end: 4px; }
 /* Wide report tables scroll horizontally instead of wrapping dates and numbers. */
-.oc-nowrap .ant-table-cell { white-space: nowrap; }
+.oc-nowrap .ant-table-tbody .ant-table-cell { white-space: nowrap; }
+/* Long headers wrap onto two lines instead of running under the next column's title. */
+.oc-nowrap .ant-table-thead > tr > th { white-space: normal; vertical-align: bottom; line-height: 1.4; }
 .oc-row-issue td { background: #fff7f5 !important; }
 
 @media (max-width: 640px) {
   .ant-layout-content { padding: 12px !important; }
 }
+/* Sortable headers: keep long titles to ~two short lines; content-sized columns do the rest. */
+.oc-nowrap .ant-table-column-title { max-width: 9em; }
+.oc-clip { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }

@@ -23,6 +23,8 @@ interface I18n {
   /** Lookup by dotted path, e.g. t("status.completed"); returns the key if missing. */
   t: (path: string, fallback?: string) => string;
   num: (n: number | null | undefined) => string;
+  /** "3 of 5": "۳ از ۵" in Persian, because "/" is the Persian decimal separator. */
+  of: (n: number, total: number) => string;
   dateTime: (iso: string | null | undefined) => string;
   date: (iso: string | null | undefined) => string;
   duration: (seconds: number | null | undefined) => string;
@@ -61,6 +63,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     const num = (n: number | null | undefined) => (n === null || n === undefined ? d.common.none : numFmt.format(n));
     return {
       lang, setLang, calendar, setCalendar, dir: lang === "fa" ? "rtl" : "ltr", d, t, num,
+      of: (n, total) => (lang === "fa" ? `${num(n)} از ${num(total)}` : `${num(n)} / ${num(total)}`),
       dateTime: (iso) => (iso ? dtFmt.format(new Date(iso)) : d.common.none),
       date: (iso) => (iso ? dFmt.format(new Date(iso)) : d.common.none),
       duration: (s) => {

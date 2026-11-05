@@ -16,7 +16,7 @@ const APPLIED = new Set(["new", "info_updated", "replace"]);
 
 export default function ImportDetailPage() {
   const { id } = useParams();
-  const { t, num, dateTime, dir, error } = useI18n();
+  const { t, num, of, dateTime, dir, error } = useI18n();
   const { message } = App.useApp();
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -67,7 +67,7 @@ export default function ImportDetailPage() {
         <Col flex="1 1 140px"><Card size="small"><Statistic title={t("imports.errors")} value={num(b.rows_error)} valueStyle={{ color: b.rows_error ? "#dc2626" : undefined }} /></Card></Col>
         <Col flex="1 1 140px"><Card size="small"><Statistic title={t("imports.warnings")} value={num(b.rows_warning)} valueStyle={{ color: b.rows_warning ? "#d97706" : undefined }} /></Card></Col>
         {b.kind === "orders" ? (
-          <Col flex="1 1 140px"><Card size="small"><Statistic title={t("imports.importable")} value={`${num(b.preview.importable ?? 0)} / ${num(orders.length)}`} /></Card></Col>
+          <Col flex="1 1 140px"><Card size="small"><Statistic title={t("imports.importable")} value={of(b.preview.importable ?? 0, orders.length)} /></Card></Col>
         ) : (
           Object.entries(b.preview.actions ?? {}).map(([k, v]) => (
             <Col flex="1 1 140px" key={k}><Card size="small"><Statistic title={t(`imports.mapping.${k}`, k)} value={num(v)} /></Card></Col>

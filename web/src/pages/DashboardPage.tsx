@@ -19,7 +19,7 @@ const CARDS: { key: keyof Summary; color: string; link: string }[] = [
 ];
 
 export default function DashboardPage() {
-  const { t, num, dateTime } = useI18n();
+  const { t, num, of, dateTime } = useI18n();
   const nav = useNavigate();
   const summary = useQuery({ queryKey: ["summary"], queryFn: () => get<Summary>("orders/summary/"), refetchInterval: 10_000 });
   const active = useQuery({
@@ -65,7 +65,7 @@ export default function DashboardPage() {
                 { title: t("order.checker"), render: (_, r) => r.checker?.name ?? <Tag>{t("order.unassigned")}</Tag> },
                 { title: t("common.status"), dataIndex: "status", render: (s) => <StatusTag status={s} /> },
                 { title: t("order.progress"), render: (_, r) => <OrderProgress done={r.lines_done} total={r.lines_total} issues={r.open_issues} /> },
-                { title: t("order.boxes"), render: (_, r) => `${num(r.boxes_scanned)} / ${num(r.boxes_ordered)}` },
+                { title: t("order.boxes"), render: (_, r) => of(r.boxes_scanned, r.boxes_ordered) },
                 { title: t("order.openIssues"), dataIndex: "open_issues", render: (v) => (v ? <Tag color="red">{num(v)}</Tag> : num(0)) },
                 { title: t("order.started"), dataIndex: "first_scan_at", render: (v) => dateTime(v) },
                 {

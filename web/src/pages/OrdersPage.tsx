@@ -15,7 +15,7 @@ const STATUSES: OrderStatus[] = ["pending_assignment", "assigned", "in_progress"
 const PAGE = 50;
 
 export default function OrdersPage() {
-  const { t, num, dateTime, duration } = useI18n();
+  const { t, num, of, dateTime, duration } = useI18n();
   const { can } = useAuth();
   const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
@@ -106,7 +106,7 @@ export default function OrdersPage() {
           { title: t("order.checker"), render: (_, r) => r.checker?.name ?? <Tag>{t("order.unassigned")}</Tag> },
           { title: t("order.picker"), dataIndex: "picker_name", render: (v) => v || t("common.none") },
           { title: t("order.lines"), dataIndex: "lines_total", render: (v) => num(v) },
-          { title: t("order.boxes"), render: (_, r) => `${num(r.boxes_scanned)} / ${num(r.boxes_ordered)}` },
+          { title: t("order.boxes"), render: (_, r) => of(r.boxes_scanned, r.boxes_ordered) },
           { title: t("order.progress"), render: (_, r) => <OrderProgress done={r.lines_done} total={r.lines_total} issues={r.open_issues} /> },
           { title: t("order.issues"), render: (_, r) => (r.issues_total ? <Tag color={r.open_issues ? "red" : "orange"}>{num(r.issues_total)}</Tag> : num(0)) },
           { title: t("order.duration"), dataIndex: "duration_seconds", render: (v) => duration(v) },
