@@ -1,0 +1,180 @@
+# Order Checking System
+
+Warehouse order-checking for a bulk FMCG distribution center: supervisors import
+orders from Excel and assign them; checkers scan boxes on Android PDAs; the
+system reconciles boxes/units, records discrepancies, and reports productivity.
+
+Design and decisions: [docs/01-proposal.md](docs/01-proposal.md) (§0 holds the
+decisions that override the rest).
+
+| Part | Tech | Status |
+|---|---|---|
+| Backend / API | Django 5.2 + DRF, PostgreSQL 16 | **Stage 1 done** — import, barcode mapping, assignment, checking engine, PDA API |
+| Admin panel | React 19 + Ant Design 6 (RTL, Persian default, Jalali) | **Stage 2 done** — live board, orders, assignment, imports, barcodes, reasons, users, permissions, audit |
+| PDA app | Kotlin + Jetpack Compose, Room, OkHttp; universal scanner layer | **Stage 3 done** — tested end-to-end on an Android 17 emulator with Urovo scan broadcasts |
+| Reports | Django ORM aggregates + Excel export | **Stage 4 done** — overview, checkers, pickers, reasons, operations |
+
+## Run on your server
+
+```bash
+cp .env.example .env      # then edit every CHANGE value
+docker compose up -d --build
+curl http://localhost/health/
+```
+
+Open `http://<server>/` for the admin panel (port `WEB_PORT`, default 80). The
+panel's nginx also proxies `/api/`, so PDAs can use the same address.
+
+- The first admin is created from `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+- Backups: the `backup` service writes a `pg_dump` every 24 h into the `backups`
+  volume and keeps 14 days. Restore:
+  `docker compose exec -T db pg_restore -U checking -d checking --clean < file.dump`
+
+## Develop
+
+```bash
+cd backend
+python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows; use .venv/bin on Linux
+.venv/Scripts/python manage.py migrate
+.venv/Scripts/python manage.py test apps                                 # 71 tests, SQLite
+docker compose run --rm --no-deps -e DJANGO_DEBUG=true backend python manage.py test apps   # same tests on PostgreSQL
+```
+
+Admin panel (Vite dev server on :5173, proxies `/api` to the backend on :8000):
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+`npm run build` type-checks and builds; `web/Dockerfile` serves the build with nginx.
+
+Panel notes: Persian/RTL is the default (switch FA/EN and Jalali/Gregorian in the
+header). Barcodes, product IDs and aisle codes are always rendered LTR. Dates are shown in
+Asia/Tehran time; date filters send Gregorian `YYYY-MM-DD` to the API. Menu items and actions
+follow the signed-in user's permissions. Checker accounts cannot sign in to the panel.
+
+## Reports (panel → Reports, permission `reports.view`)
+
+Periods: Today / This week (from Saturday) / This month (Jalali month when the Jalali calendar is on) /
+Custom; filter by checker (and picker on Reasons). Every tab exports to Excel (RTL with Jalali dates in Persian).
+
+| Tab | Shows |
+|---|---|
+| Overview | Right now: waiting, assigned-not-started, being checked, open issues. In the period: orders assigned/checked/with discrepancies, SKUs, boxes checked/scanned, shortages (boxes + units), extras, not-in-order, avg time per order, avg active time, seconds per SKU, per-day table |
+| Checkers | Per checker: orders, SKUs, boxes scanned, active time, **boxes per active hour**, avg time per order, seconds per SKU, shortages, extras, not-in-order, double-reads, unknown scans, mistaken scans, corrections |
+| Pickers | Per picker: orders, SKUs, boxes; shortages split into stock vs picking reasons; extras; not-in-order; **error boxes and error rate** (non-stock shortages + extras + not-in-order) |
+| Reasons | Discrepancies grouped by type and reason: lines, boxes, units, share |
+| Operations | Every order active in the period: imported, assigned, started, completed, wait before start, elapsed, active time, progress, discrepancies |
+
+Definitions: an order counts as *checked* in the period it was completed; volumes (SKUs, boxes,
+discrepancies) are taken from orders completed in the period so all tabs agree; *boxes scanned* counts
+accepted scans in the period (including unfinished orders); *active time* excludes gaps over 5 minutes
+(`CHECK_ACTIVE_GAP_SECONDS`); discrepancies that resolved themselves are not counted.
+
+API: `GET /api/reports/{overview|checkers|pickers|reasons|operations}/?from=YYYY-MM-DD&to=YYYY-MM-DD&checker=&picker=&status=&q=`,
+add `&export=xlsx&lang=fa|en` for Excel.
+
+## PDA app (`pda/`)
+
+Build (JDK 17+, Android SDK 37; Android Studio's bundled JBR works):
+
+```bash
+cd pda
+./gradlew :app:assembleDebug :app:testDebugUnitTest
+```
+
+APK: `pda/app/build/outputs/apk/debug/app-debug.apk` — install with `adb install -r app-debug.apk`
+(or copy to the PDA and open it). Android 8.0+ (minSdk 26).
+
+First run: **Settings** → server address (e.g. `http://192.168.1.10`, the panel's address) → *Test
+connection* → press the scan button and check the barcode appears under *Scanner test*. Keep the scanner
+mode on **Automatic** unless the test shows nothing.
+
+How it works:
+- **Scanner:** *Automatic* listens for the broadcast intents of Urovo, Zebra (auto-creates a DataWedge
+  profile), Honeywell, Newland, iData, Sunmi, Chainway and Seuic at once; on Urovo it also switches the
+  scanner to intent output via `android.device.ScanManager`. Keyboard-wedge input is a fallback.
+  Double-reads (same code within 700 ms, monotonic clock) are recorded but never counted.
+- **Offline-first:** the order, its barcodes and the central barcode mapping live on the device (Room).
+  A scan is applied locally in a few ms with sound + vibration, and stored with its event in one
+  transaction; a background sync sends events in order and survives app restarts. The server applies the
+  same rules and is authoritative. Completing an order needs the network.
+- **Feedback:** short beep = +1 box, double beep = item complete, error tone = unknown barcode, repeating
+  alarm + full-screen red block = extra box / not in order (must answer *Removed from pallet* or
+  *Scanned by mistake*).
+- **Finish:** lists what still blocks completion; remaining items can be marked as shortages in bulk with
+  one reason.
+- Persian by default (RTL, Vazirmatn, Persian digits; counts shown as "۳ از ۵" because `/` is the Persian
+  decimal separator); English in Settings. Barcodes/IDs/aisles always LTR.
+
+Simulate a Urovo scan on an emulator or device:
+
+```bash
+adb shell am broadcast -a android.intent.ACTION_DECODE_DATA --es barcode_string 6260108396830
+```
+
+Import a file from the command line (preview only; add `--commit` to apply):
+
+```bash
+.venv/Scripts/python manage.py import_excel path/to/order_check.xlsx
+.venv/Scripts/python manage.py import_excel path/to/mapping.xlsx --kind barcodes --commit
+```
+
+## Key rules implemented
+
+- **1 scan = 1 box.** Units are always `boxes × inc_ordered`. Import rejects rows where
+  `units_ordered ≠ pack_ordered × inc_ordered`.
+- **Barcode lookup:** this order's file barcodes → central mapping → unknown. Real
+  barcodes always win over repaired ones.
+- **Barcode cleanup** (same on import and scan): AIM prefixes, GS1 `(01)`, Persian
+  digits, bidi marks, UPC-A/EAN-13/GTIN-14 leading zeros. Placeholders like
+  `123456` are ignored. 12-digit codes with a dropped digit get a repaired EAN-13
+  unless it collides with another product's real barcode.
+- **Extras can't ship:** an over-scan or a not-in-order product is never counted;
+  it blocks scanning until the checker answers *Removed from pallet* (recorded as
+  a discrepancy, attributed to the picker, default reason) or *Scanned by mistake*.
+- **Shortages** are declared by the checker (*Not found* or at Finish); late boxes
+  shrink them automatically.
+- **Completion** requires every line complete or short-with-reason, no pending
+  decision, no discrepancy without a reason. Completed orders reject scans.
+- **Duplicate protection:** scanner double-reads are flagged on the PDA (monotonic
+  clock, 700 ms); every event has a PDA-generated UUID, so re-sent batches are never
+  applied twice; PDA clock skew is corrected per batch via `sent_at`.
+- **One active checker per order** (database constraint). Reassignment keeps all
+  scans; offline scans made before the reassignment are still accepted (flagged late).
+- **Audit:** every import, assignment, discrepancy change, correction, completion,
+  cancel/reopen, user and permission change.
+
+## API overview
+
+All endpoints are under `/api/`, JSON, `Authorization: Bearer <access token>`.
+Errors: `{"code": "<stable_key>", "detail": "...", "data": {...}}`.
+
+| Method & path | Permission | Purpose |
+|---|---|---|
+| `POST auth/login/` | — | `{username, password, device_serial?, device_model?, app_version?}` → tokens + user |
+| `POST auth/refresh/` · `GET/PATCH auth/me/` | any | token refresh · profile / language |
+| `GET/POST/PATCH users/` · `POST users/{id}/reset-password/` · `GET users/activity/` | users.manage | user admin (no delete; deactivate) |
+| `GET/PUT role-permissions/` | permissions.manage | role → permission matrix |
+| `GET checkers/` | orders.view | active checkers with current workload |
+| `GET orders/summary/` | orders.view | live board counters |
+| `GET audit/?action=&user=&from=&to=` | audit.view | global audit log |
+| `GET/POST/PATCH reasons/` | reasons.manage (read: any) | discrepancy reasons |
+| `POST imports/` (multipart `file`, `kind=orders\|barcodes`) | orders.import / barcodes.manage | upload → validated preview |
+| `GET imports/{id}/rows/?filter=errors\|warnings` · `POST imports/{id}/commit/` · `…/discard/` | same | review and apply |
+| `GET orders/?status=&checker=&unassigned=&has_issues=&q=&from=&to=` · `GET orders/{id}/` | orders.view | lists and detail (lines, tabs, discrepancies, assignments) |
+| `POST orders/{id}/assign\|reassign\|unassign/` · `POST orders/bulk-assign/` | orders.assign | `{checker_id, reason?}` |
+| `POST orders/{id}/cancel\|reopen/` | orders.manage | `{note}` required |
+| `GET orders/{id}/events/` · `GET orders/{id}/audit/` | orders.view · audit.view | scan timeline · audit trail |
+| `GET products/?q=` · `GET products/{id}/` · `POST products/{id}/barcodes/` | any · barcodes.manage | search, barcode history, manual mapping |
+| `GET pda/config/` | checking.perform | debounce, active reasons |
+| `GET pda/orders/` · `GET pda/orders/{id}/` | checking.perform | my orders · full offline snapshot |
+| `POST pda/orders/{id}/events/` | checking.perform | `{sent_at, events:[{id, kind, at, …}]}` (≤500) |
+| `GET pda/orders/{id}/finish-check/` · `POST pda/orders/{id}/finish/` | checking.perform | completion problems · complete |
+| `GET pda/barcodes/?since=&after_id=` | checking.perform | central mapping change feed for the PDA cache |
+
+PDA event kinds: `scan {barcode, duplicate?}`, `extra_decision {ref, decision: removed|mistake}`,
+`declare_short {line_id, reason_id?, note?}`, `set_reason {line_id, type, reason_id, note?}`,
+`adjust {line_id, boxes, reason_id?, note?}`.

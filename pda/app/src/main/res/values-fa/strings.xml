@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">کنترل سفارش</string>
+
+    <string name="setup_title">تنظیمات</string>
+    <string name="server_url">آدرس سرور</string>
+    <string name="server_hint">مثلاً http://192.168.1.10</string>
+    <string name="test_connection">بررسی اتصال</string>
+    <string name="connection_ok">اتصال به سرور برقرار است</string>
+    <string name="connection_failed">سرور در دسترس نیست</string>
+    <string name="save">ذخیره</string>
+    <string name="scanner_mode">اسکنر</string>
+    <string name="scanner_test">آزمایش اسکنر</string>
+    <string name="scanner_test_hint">دکمه اسکن را بزنید و یک بارکد را اسکن کنید؛ باید اینجا نمایش داده شود.</string>
+    <string name="scanner_last">دریافت شد: %1$s (از %2$s)</string>
+    <string name="scanner_nothing">هنوز چیزی دریافت نشده</string>
+    <string name="mode_auto">خودکار (همه برندها)</string>
+    <string name="mode_keyboard">فقط ورودی صفحه‌کلید</string>
+    <string name="language">زبان</string>
+    <string name="device_id">شناسه دستگاه: %1$s</string>
+    <string name="cached_barcodes">بارکدهای ذخیره‌شده در دستگاه: %1$d</string>
+    <string name="sync_barcodes">به‌روزرسانی بارکدها</string>
+    <string name="version">نسخه %1$s</string>
+
+    <string name="login_title">ورود</string>
+    <string name="username">نام کاربری</string>
+    <string name="password">رمز عبور</string>
+    <string name="login">ورود</string>
+    <string name="login_failed">نام کاربری یا رمز عبور نادرست است</string>
+    <string name="not_a_checker">این حساب، حساب کنترل‌گر نیست</string>
+    <string name="network_error">سرور در دسترس نیست</string>
+    <string name="no_server">ابتدا آدرس سرور را در تنظیمات وارد کنید</string>
+    <string name="logout">خروج</string>
+    <string name="logout_unsent">%1$d عملیات هنوز ارسال نشده است. پس از ورود مجدد در همین دستگاه ارسال می‌شوند. خارج می‌شوید؟</string>
+    <string name="settings">تنظیمات</string>
+
+    <string name="my_orders">سفارش‌های من</string>
+    <string name="no_orders">سفارشی به شما تخصیص داده نشده</string>
+    <string name="refresh">بازخوانی</string>
+    <string name="offline">آفلاین</string>
+    <string name="online">آنلاین</string>
+    <string name="pending_sync">%1$d در صف ارسال</string>
+    <string name="all_sent">همه ارسال شد</string>
+    <string name="downloading">در حال دریافت سفارش…</string>
+    <string name="not_downloaded">هنوز دریافت نشده؛ به شبکه وصل شوید</string>
+    <string name="skus">%1$d قلم</string>
+    <string name="boxes_of">%1$d / %2$d کارتن</string>
+    <string name="lines_of">%1$d / %2$d قلم</string>
+    <string name="issues_n">%1$d مغایرت</string>
+    <string name="status_assigned">شروع نشده</string>
+    <string name="status_in_progress">در حال کنترل</string>
+    <string name="status_completed">تکمیل‌شده</string>
+    <string name="status_cancelled">لغوشده</string>
+
+    <string name="tab_to_check">در انتظار کنترل</string>
+    <string name="tab_ok">بدون مغایرت</string>
+    <string name="tab_issue">دارای مغایرت</string>
+    <string name="x_of_y">%1$d از %2$d</string>
+    <string name="ordered">سفارش</string>
+    <string name="scanned">اسکن</string>
+    <string name="remaining">باقیمانده</string>
+    <string name="units">عدد</string>
+    <string name="boxes">کارتن</string>
+    <string name="units_per_box">%1$d عدد در کارتن</string>
+    <string name="aisle">راهرو</string>
+    <string name="short_n">کسری %1$d کارتن (%2$d عدد)</string>
+    <string name="extra_n">%1$d کارتن اضافه خارج شد</string>
+    <string name="not_in_order_n">خارج از سفارش: %1$d کارتن خارج شد</string>
+    <string name="reason">دلیل</string>
+    <string name="no_reason">بدون دلیل</string>
+    <string name="note">توضیح</string>
+    <string name="note_required">برای این دلیل توضیح الزامی است</string>
+    <string name="scan_prompt">کارتن را اسکن کنید</string>
+    <string name="search_hint">جستجوی نام، کد یا بارکد</string>
+    <string name="empty_tab">موردی نیست</string>
+
+    <string name="outcome_counted">+۱ کارتن</string>
+    <string name="outcome_complete">قلم کامل شد</string>
+    <string name="outcome_duplicate">اسکن تکراری نادیده گرفته شد</string>
+    <string name="outcome_unknown">بارکد ناشناس</string>
+    <string name="outcome_blocked">ابتدا به هشدار پاسخ دهید</string>
+    <string name="outcome_locked">سفارش بسته است</string>
+    <string name="outcome_removed">به‌عنوان اضافه ثبت شد</string>
+    <string name="outcome_mistake">اسکن لغو شد</string>
+    <string name="outcome_saved">ثبت شد</string>
+
+    <string name="not_in_order_title">خارج از این سفارش</string>
+    <string name="over_title">بیش از مقدار سفارش</string>
+    <string name="must_remove">ارسال کالای اضافه مجاز نیست. این کارتن را از پالت خارج کنید.</string>
+    <string name="over_detail">سفارش %1$d، اسکن‌شده %2$d</string>
+    <string name="removed_btn">از پالت خارج شد</string>
+    <string name="mistake_btn">اشتباه اسکن شد</string>
+
+    <string name="not_found">پیدا نشد (کسری)</string>
+    <string name="set_reason">ثبت دلیل</string>
+    <string name="correct_qty">اصلاح تعداد اسکن‌شده</string>
+    <string name="apply">اعمال</string>
+    <string name="cancel">انصراف</string>
+    <string name="close">بستن</string>
+    <string name="manual_entry">ورود دستی بارکد</string>
+    <string name="enter_barcode">بارکد</string>
+
+    <string name="finish">پایان</string>
+    <string name="finish_title">پایان کنترل</string>
+    <string name="finish_remaining">%1$d قلم کامل اسکن نشده</string>
+    <string name="finish_remaining_hint">اقلامی را که واقعاً کسری دارند انتخاب و دلیل را ثبت کنید. اگر هنوز در راه هستند، برگردید و اسکن کنید.</string>
+    <string name="finish_no_reason">%1$d مغایرت بدون دلیل</string>
+    <string name="finish_pending">ابتدا به هشدار باز پاسخ دهید</string>
+    <string name="select_all">انتخاب همه</string>
+    <string name="record_shortage">ثبت کسری برای %1$d قلم</string>
+    <string name="complete_order">تکمیل سفارش</string>
+    <string name="complete_ready">همه اقلام کنترل شده‌اند.</string>
+    <string name="completing">در حال ارسال و تکمیل…</string>
+    <string name="completed_msg">سفارش تکمیل شد</string>
+    <string name="finish_needs_online">تکمیل سفارش به سرور نیاز دارد. شبکه را بررسی و دوباره تلاش کنید.</string>
+    <string name="cannot_complete">سرور هنوز اقلام باز می‌بیند. در حال به‌روزرسانی…</string>
+
+    <string name="order_revoked">این سفارش به فرد دیگری تخصیص یافته یا لغو شده و در این دستگاه بسته است.</string>
+    <string name="order_locked">این سفارش تکمیل شده و اسکن بسته است.</string>
+    <string name="back">بازگشت</string>
+
+    <string name="disc_status_open">نیازمند دلیل</string>
+    <string name="disc_status_reasoned">ثبت‌شده</string>
+    <string name="disc_status_resolved">رفع‌شده</string>
+</resources>
