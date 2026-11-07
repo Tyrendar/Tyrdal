@@ -37,7 +37,7 @@ panel's nginx also proxies `/api/`, so PDAs can use the same address.
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows; use .venv/bin on Linux
 .venv/Scripts/python manage.py migrate
-.venv/Scripts/python manage.py test apps                                 # 114 tests, SQLite
+.venv/Scripts/python manage.py test apps                                 # 122 tests, SQLite
 docker compose run --rm --no-deps -e DJANGO_DEBUG=true backend python manage.py test apps   # same tests on PostgreSQL
 ```
 
@@ -133,6 +133,18 @@ Import a file from the command line (preview only; add `--commit` to apply):
 .venv/Scripts/python manage.py import_excel path/to/order_check.xlsx
 .venv/Scripts/python manage.py import_excel path/to/mapping.xlsx --kind barcodes --commit
 ```
+
+## Auto-assign by capacity (Orders → Auto-assign, permission `orders.assign`)
+
+Each checker has a daily capacity in boxes (set in the auto-assign window or on the user form). Their load today =
+boxes scanned today + boxes left on their open orders. The plan gives the unassigned orders (or the selected ones)
+so every checker ends the day at the same share of their capacity: within total capacity nobody goes over; above
+it the extra is spread in proportion to capacity (e.g. 3,500 boxes with 2,000/1,500 → 2,000/1,500; 4,200 →
+2,400/1,800). Orders are never split: whole orders are packed largest-first to the biggest remaining gap, then
+improved by moving/swapping orders. The plan is a preview: change any order's checker, then apply. Assignments can
+still be changed one by one afterwards (assign / reassign / unassign).
+API: `PUT checkers/{id}/capacity/`, `POST orders/auto-assign/plan/` (`{order_ids?, checker_ids?}`),
+`POST orders/auto-assign/apply/` (`{assignments: [{order_id, checker_id}]}`).
 
 ## Panel layout
 

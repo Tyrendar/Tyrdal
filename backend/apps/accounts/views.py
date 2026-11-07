@@ -96,17 +96,46 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
 
 
 class CheckersView(APIView):
-    """Active checkers with their current workload, for the assignment picker."""
+    """Active checkers with their current workload, daily capacity and today's load, for assignment."""
 
     permission_classes = [require("orders.view")]
 
     def get(self, request):
-        qs = users_with_role_perm("checking.perform").annotate(
+        from apps.orders.autoassign import today_load
+
+        qs = list(users_with_role_perm("checking.perform").annotate(
             active_orders=Count("assignments", filter=Q(assignments__revoked_at__isnull=True,
                                                         assignments__order__status__in=("assigned", "in_progress"))),
-        ).order_by("full_name", "username")
-        return Response([{"id": u.pk, "username": u.username, "name": u.display_name, "active_orders": u.active_orders}
-                         for u in qs])
+        ).order_by("full_name", "username"))
+        load = today_load([u.pk for u in qs])
+        return Response([{"id": u.pk, "username": u.username, "name": u.display_name, "active_orders": u.active_orders,
+                          "capacity_boxes": u.capacity_boxes, "load_today": load.get(u.pk, 0)} for u in qs])
+
+
+class CheckerCapacityView(APIView):
+    """Set a checker's daily capacity (boxes). Part of assigning work, so orders.assign is enough."""
+
+    permission_classes = [require("orders.assign")]
+
+    def put(self, request, pk):
+        user = User.objects.filter(pk=pk).first()
+        if user is None or not user.has_role_perm("checking.perform"):
+            raise DomainError("invalid_checker", "Not an active checker")
+        raw = request.data.get("capacity_boxes")
+        if raw in (None, ""):
+            cap = None
+        else:
+            try:
+                cap = int(raw)
+            except (TypeError, ValueError):
+                raise DomainError("invalid_capacity", "Capacity must be a whole number of boxes")
+            if cap < 0 or cap > 1_000_000:
+                raise DomainError("invalid_capacity", "Capacity out of range")
+        before = user.capacity_boxes
+        user.capacity_boxes = cap
+        user.save(update_fields=["capacity_boxes"])
+        record("checker.capacity_changed", user, request=request, before={"capacity_boxes": before}, after={"capacity_boxes": cap})
+        return Response({"id": user.pk, "capacity_boxes": cap})
 
 
 class RolePermissionView(APIView):

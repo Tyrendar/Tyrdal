@@ -1,6 +1,6 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table } from "antd";
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, Table } from "antd";
 import { useState } from "react";
 import { get, patch, post } from "../api/client";
 import { useAuth } from "../auth";
@@ -8,7 +8,7 @@ import { Ltr } from "../components/common";
 import { RoleTags, roleName, useRoles } from "../components/roles";
 import { useI18n } from "../i18n";
 
-interface ActivityRow { id: number; username: string; full_name: string; roles: string[]; is_active: boolean; last_login: string | null; scans_today: number }
+interface ActivityRow { id: number; username: string; full_name: string; roles: string[]; capacity_boxes?: number | null; is_active: boolean; last_login: string | null; scans_today: number }
 
 export default function UsersPage() {
   const { t, num, dateTime, error, lang } = useI18n();
@@ -83,6 +83,9 @@ export default function UsersPage() {
           <Form.Item name="full_name" label={t("users.fullName")} rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="roles" label={t("users.roles")} extra={t("users.rolesHint")} rules={[{ required: true, type: "array", min: 1 }]}>
             <Select mode="multiple" options={roleOptions} />
+          </Form.Item>
+          <Form.Item name="capacity_boxes" label={t("auto.capacity")} extra={t("auto.capacityHint")}>
+            <InputNumber min={0} max={1000000} step={100} style={{ width: 200 }} addonAfter={t("common.boxes")} />
           </Form.Item>
           {!editing?.id && (
             <Form.Item name="password" label={t("users.password")} rules={[{ required: true, min: 4 }]}><Input.Password dir="ltr" autoComplete="new-password" /></Form.Item>

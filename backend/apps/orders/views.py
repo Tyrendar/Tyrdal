@@ -104,6 +104,7 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     def get_permissions(self):
         perm = {
             "assign": "orders.assign", "reassign": "orders.assign", "unassign": "orders.assign",
+            "bulk_assign": "orders.assign", "auto_assign_plan": "orders.assign", "auto_assign_apply": "orders.assign",
             "cancel": "orders.manage", "reopen": "orders.manage", "audit": "audit.view",
         }.get(self.action, "orders.view")
         return [require(perm)()]
@@ -162,6 +163,61 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
                 done.append(order.pk)
             except DomainError as e:
                 failed.append({"order_id": order.pk, "code": e.error_code})
+        return Response({"assigned": done, "failed": failed})
+
+    @action(detail=False, methods=["post"], url_path="auto-assign/plan")
+    def auto_assign_plan(self, request):
+        """Proposed assignment of unassigned orders by checkers' daily capacity. Nothing is saved.
+
+        Body: {order_ids?: [...] (default: every unassigned open order), checker_ids?: [...] (default: every
+        checker with a capacity)}.
+        """
+        from apps.accounts.models import users_with_role_perm
+
+        from . import autoassign
+
+        orders = list(autoassign.unassigned_orders(request.data.get("order_ids") or None)
+                      .select_related("customer").order_by("imported_at", "id"))
+        checkers = users_with_role_perm("checking.perform")
+        ids = request.data.get("checker_ids")
+        checkers = list(checkers.filter(pk__in=ids) if ids else checkers.filter(capacity_boxes__gt=0))
+        checkers = [c for c in checkers if (c.capacity_boxes or 0) > 0]
+        if not checkers:
+            raise DomainError("no_capacity", "Set a daily capacity for at least one checker")
+        load = autoassign.today_load([c.pk for c in checkers])
+        cs = [autoassign.Checker(c.pk, c.capacity_boxes, load.get(c.pk, 0)) for c in checkers]
+        meta = autoassign.plan([(o.pk, o.boxes_ordered) for o in orders], cs)
+        by_order = {oid: c.id for c in cs for oid, _b in c.orders}
+        names = {c.pk: c.display_name for c in checkers}
+        return Response({
+            "total_boxes": meta["total"], "level": round(meta["lambda"], 4),
+            "checkers": [{
+                "id": c.id, "name": names[c.id], "capacity_boxes": c.capacity, "load_today": c.load,
+                "target": round(c.target), "assigned": c.assigned, "orders": len(c.orders),
+            } for c in cs],
+            "orders": [{
+                "id": o.pk, "reference_id": o.reference_id, "customer": o.customer.name, "boxes": o.boxes_ordered,
+                "lines": o.lines_total, "checker_id": by_order.get(o.pk),
+            } for o in orders],
+        })
+
+    @action(detail=False, methods=["post"], url_path="auto-assign/apply")
+    def auto_assign_apply(self, request):
+        """Body: {assignments: [{order_id, checker_id}]} (the plan, possibly edited by hand)."""
+        pairs = request.data.get("assignments") or []
+        checkers = {u.pk: u for u in User.objects.filter(pk__in={p.get("checker_id") for p in pairs})}
+        done, failed = [], []
+        for p in pairs:
+            order = Order.objects.filter(pk=p.get("order_id")).first()
+            checker = checkers.get(p.get("checker_id"))
+            if order is None or checker is None:
+                failed.append({"order_id": p.get("order_id"), "code": "not_found"})
+                continue
+            try:
+                services.assign(order, checker, by=request.user, request=request)
+                done.append(order.pk)
+            except DomainError as e:
+                failed.append({"order_id": order.pk, "reference_id": order.reference_id, "code": e.error_code})
         return Response({"assigned": done, "failed": failed})
 
     @action(detail=True, methods=["post"])

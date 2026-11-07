@@ -68,6 +68,7 @@ class User(AbstractUser):
     """A user may hold several roles; permissions are the union of the roles' permissions."""
 
     roles = models.ManyToManyField(AppRole, blank=True, related_name="users")
+    capacity_boxes = models.PositiveIntegerField(null=True, blank=True, help_text="Checking capacity, boxes per day (auto-assign)")
     full_name = models.CharField(max_length=150, blank=True)
     language = models.CharField(max_length=5, choices=[("fa", "فارسی"), ("en", "English")], default="fa")
 

@@ -10,7 +10,7 @@ export interface User {
   is_active: boolean; last_login: string | null; date_joined: string; permissions: string[];
 }
 
-export interface Checker { id: number; username: string; name: string; active_orders: number }
+export interface Checker { id: number; username: string; name: string; active_orders: number; capacity_boxes: number | null; load_today: number }
 
 export interface OrderListItem {
   id: number; reference_type: string; reference_id: string; version: number; customer: string; picker_name: string;

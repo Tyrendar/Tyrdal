@@ -1,4 +1,4 @@
-import { ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
+import { ReloadOutlined, ThunderboltOutlined, UserAddOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Checkbox, Input, Select, Table, Tag } from "antd";
 import { useMemo, useState } from "react";
@@ -7,6 +7,7 @@ import { get, qs, type Page } from "../api/client";
 import type { OrderListItem, OrderStatus } from "../api/types";
 import { useAuth } from "../auth";
 import AssignModal, { useCheckers } from "../components/AssignModal";
+import AutoAssignModal from "../components/AutoAssignModal";
 import { DateRange } from "../components/DateRange";
 import { Ltr, OrderProgress, StatusTag } from "../components/common";
 import { useI18n } from "../i18n";
@@ -20,6 +21,7 @@ export default function OrdersPage() {
   const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
   const [selected, setSelected] = useState<number[]>([]);
+  const [autoOpen, setAutoOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const checkers = useCheckers();
 
@@ -51,6 +53,11 @@ export default function OrdersPage() {
       <div className="oc-page-header">
         <h2>{t("menu.orders")}</h2>
         <span style={{ display: "flex", gap: 8 }}>
+          {can("orders.assign") && (
+            <Button icon={<ThunderboltOutlined />} onClick={() => setAutoOpen(true)}>
+              {t("auto.button")} {selected.length ? `(${num(selected.length)})` : ""}
+            </Button>
+          )}
           {can("orders.assign") && (
             <Button type="primary" icon={<UserAddOutlined />} disabled={!selected.length} onClick={() => setAssignOpen(true)}>
               {t("order.bulkAssign")} {selected.length ? `(${num(selected.length)})` : ""}
@@ -114,6 +121,7 @@ export default function OrdersPage() {
       />
 
       <AssignModal open={assignOpen} mode="bulk" orderIds={selected} onClose={() => { setAssignOpen(false); setSelected([]); }} />
+      <AutoAssignModal open={autoOpen} orderIds={selected} onClose={() => { setAutoOpen(false); setSelected([]); }} />
     </>
   );
 }

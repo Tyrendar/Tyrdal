@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from apps.accounts.views import AppRoleViewSet, CheckersView, LoginView, MeView, RolePermissionView, UserViewSet
+from apps.accounts.views import AppRoleViewSet, CheckerCapacityView, CheckersView, LoginView, MeView, RolePermissionView, UserViewSet
 from apps.audit.views import AuditLogView
 from apps.catalog.views import ProductViewSet
 from apps.checking.views import (
@@ -46,6 +46,7 @@ urlpatterns = [
     path("auth/me/", MeView.as_view()),
     path("role-permissions/", RolePermissionView.as_view()),
     path("checkers/", CheckersView.as_view()),
+    path("checkers/<int:pk>/capacity/", CheckerCapacityView.as_view()),
     path("stocktakers/", StocktakersView.as_view()),
     path("audit/", AuditLogView.as_view()),
     path("pda/", include(pda)),
