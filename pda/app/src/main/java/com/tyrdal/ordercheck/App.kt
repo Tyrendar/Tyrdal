@@ -8,6 +8,7 @@ import com.tyrdal.ordercheck.data.ApiException
 import com.tyrdal.ordercheck.data.LoginRequest
 import com.tyrdal.ordercheck.data.OrderStore
 import com.tyrdal.ordercheck.data.Prefs
+import com.tyrdal.ordercheck.data.StockStore
 import com.tyrdal.ordercheck.data.ReasonDto
 import com.tyrdal.ordercheck.data.UserDto
 import com.tyrdal.ordercheck.data.db.AppDb
@@ -34,6 +35,7 @@ class App : Application() {
     lateinit var db: AppDb; private set
     lateinit var api: Api; private set
     lateinit var store: OrderStore; private set
+    lateinit var stock: StockStore; private set
     lateinit var sync: SyncManager; private set
     lateinit var scanner: ScannerManager; private set
     lateinit var feedback: Feedback; private set
@@ -54,7 +56,8 @@ class App : Application() {
                 lookupMapping = { code -> db.barcodes().getBlocking(code)?.let { MappedProduct(it.productId, it.title) } },
             )
         }
-        sync = SyncManager(appScope, api, db, store, prefs) { _reasons.value = it }
+        stock = StockStore(db)
+        sync = SyncManager(appScope, api, db, store, prefs, { _reasons.value = it }) { _user.value?.permissions?.toSet() ?: emptySet() }
         scanner = ScannerManager(this, prefs)
         feedback = Feedback(this, appScope)
         prefs.reasonsJson?.let { s ->
@@ -70,7 +73,7 @@ class App : Application() {
 
     suspend fun login(username: String, password: String): UserDto {
         val r = api.login(LoginRequest(username, password, prefs.deviceSerial, "${Build.MANUFACTURER} ${Build.MODEL}", BuildConfig.VERSION_NAME))
-        if (!r.user.permissions.contains("checking.perform")) throw ApiException(403, "not_a_checker")
+        if (PDA_PERMS.none { it in r.user.permissions }) throw ApiException(403, "not_a_checker")
         prefs.access = r.access
         prefs.refresh = r.refresh
         prefs.userJson = json.encodeToString(UserDto.serializer(), r.user)
@@ -87,6 +90,9 @@ class App : Application() {
     }
 
     companion object {
+        /** A PDA account checks orders, counts stock, or both. */
+        val PDA_PERMS = listOf("checking.perform", "stocktake.perform")
+
         fun localized(base: Context, lang: String): Context {
             val locale = Locale.forLanguageTag(lang)
             Locale.setDefault(locale)

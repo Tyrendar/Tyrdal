@@ -6,6 +6,7 @@ class Role(models.TextChoices):
     ADMIN = "admin", "Admin"
     SUPERVISOR = "supervisor", "Supervisor"
     CHECKER = "checker", "Checker"
+    STOCKTAKER = "stocktaker", "Stocktaker"
 
 
 # Catalogue of permission codes the application checks. Which role holds which
@@ -22,15 +23,18 @@ PERMISSIONS: dict[str, str] = {
     "reports.view": "Access reports and live monitoring",
     "audit.view": "View the audit log",
     "checking.perform": "Check assigned orders on the PDA",
+    "stocktake.manage": "Manage vendors and stocktakes, export counts",
+    "stocktake.perform": "Count stock on the PDA",
 }
 
 DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
     Role.ADMIN: set(PERMISSIONS),
     Role.SUPERVISOR: {
         "orders.view", "orders.import", "orders.assign", "orders.manage",
-        "reasons.manage", "barcodes.manage", "reports.view", "audit.view",
+        "reasons.manage", "barcodes.manage", "reports.view", "audit.view", "stocktake.manage",
     },
     Role.CHECKER: {"checking.perform"},
+    Role.STOCKTAKER: {"stocktake.perform"},
 }
 
 

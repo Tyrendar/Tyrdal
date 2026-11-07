@@ -152,3 +152,41 @@ data class ProblemDto(val code: String, @SerialName("line_id") val lineId: Long?
 
 @Serializable
 data class ErrorDto(val code: String = "error", val detail: String = "", val data: JsonObject? = null)
+
+// --- Stocktaking ---------------------------------------------------------------------
+@Serializable
+data class StocktakeDto(
+    val id: Long,
+    val vendor: String,
+    @SerialName("vendor_code") val vendorCode: String = "",
+    val date: String,
+    val status: String,
+    val note: String = "",
+    val countable: Boolean,
+    @SerialName("my_records") val myRecords: Int = 0,
+    @SerialName("my_quantity") val myQuantity: Int = 0,
+)
+
+@Serializable
+data class StockRecordDto(
+    val id: String,
+    val barcode: String,
+    val quantity: Int,
+    /** Sent as text ("1200.5"); the server returns a number. */
+    val price: kotlinx.serialization.json.JsonPrimitive? = null,
+    @SerialName("counted_at") val countedAt: String,
+    @SerialName("updated_at") val updatedAt: String,
+    val deleted: Boolean = false,
+)
+
+@Serializable
+data class StockPushRequest(@SerialName("sent_at") val sentAt: String, val records: List<StockRecordDto>)
+
+@Serializable
+data class StockRejectDto(val id: String? = null, val error: String)
+
+@Serializable
+data class StockPushResponse(val accepted: List<String>, val rejected: List<StockRejectDto> = emptyList(), val stocktake: StocktakeDto)
+
+@Serializable
+data class StockRecordsResponse(val stocktake: StocktakeDto, val records: List<StockRecordDto>)

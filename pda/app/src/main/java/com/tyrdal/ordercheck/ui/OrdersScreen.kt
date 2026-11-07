@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -53,7 +54,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OrdersScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit) {
+fun OrdersScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit, onStock: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     val app = ctx.app
     val scope = rememberCoroutineScope()
@@ -79,6 +80,7 @@ fun OrdersScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit) {
                 },
                 actions = {
                     SyncIndicator()
+                    if (onStock != null) IconButton(onClick = onStock) { Icon(Icons.Filled.Inventory, stringResource(R.string.stocktaking)) }
                     IconButton(onClick = { scope.launch { refreshing = true; app.sync.pushAll(); app.sync.refreshOrders(); refreshing = false } }) {
                         Icon(Icons.Filled.Refresh, stringResource(R.string.refresh))
                     }

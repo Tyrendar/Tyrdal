@@ -10,6 +10,9 @@ from apps.checking.views import (
     ReasonViewSet,
 )
 from apps.orders.views import ImportViewSet, OrderViewSet
+from apps.stocktake.views import (
+    PdaStocktakeRecordsView, PdaStocktakesView, StocktakersView, StocktakeViewSet, VendorViewSet,
+)
 from apps.reports.views import CheckersReport, OperationsReport, OverviewReport, PickersReport, PickingReport, ReasonsReport
 
 router = DefaultRouter()
@@ -18,6 +21,8 @@ router.register("reasons", ReasonViewSet, basename="reason")
 router.register("imports", ImportViewSet, basename="import")
 router.register("orders", OrderViewSet, basename="order")
 router.register("products", ProductViewSet, basename="product")
+router.register("vendors", VendorViewSet, basename="vendor")
+router.register("stocktakes", StocktakeViewSet, basename="stocktake")
 
 pda = [
     path("config/", PdaConfigView.as_view()),
@@ -27,6 +32,8 @@ pda = [
     path("orders/<int:order_id>/finish/", PdaFinishView.as_view()),
     path("orders/<int:order_id>/finish-check/", PdaFinishCheckView.as_view()),
     path("barcodes/", PdaBarcodesView.as_view()),
+    path("stocktakes/", PdaStocktakesView.as_view()),
+    path("stocktakes/<int:pk>/records/", PdaStocktakeRecordsView.as_view()),
 ]
 
 urlpatterns = [
@@ -35,6 +42,7 @@ urlpatterns = [
     path("auth/me/", MeView.as_view()),
     path("role-permissions/", RolePermissionView.as_view()),
     path("checkers/", CheckersView.as_view()),
+    path("stocktakers/", StocktakersView.as_view()),
     path("audit/", AuditLogView.as_view()),
     path("pda/", include(pda)),
     path("reports/overview/", OverviewReport.as_view()),

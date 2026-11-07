@@ -12,7 +12,8 @@ decisions that override the rest).
 | Backend / API | Django 5.2 + DRF, PostgreSQL 16 | **Stage 1 done** — import, barcode mapping, assignment, checking engine, PDA API |
 | Admin panel | React 19 + Ant Design 6 (RTL, Persian default, Jalali) | **Stage 2 done** — live board, orders, assignment, imports, barcodes, reasons, users, permissions, audit |
 | PDA app | Kotlin + Jetpack Compose, Room, OkHttp; universal scanner layer | **Stage 3 done** — tested end-to-end on an Android 17 emulator with Urovo scan broadcasts |
-| Reports | Django ORM aggregates + Excel export | **Stage 4 done** — overview, checkers, pickers, reasons, operations |
+| Reports | Django ORM aggregates + Excel export | **Stage 4 done** — overview, checkers, pickers, picked vs checked, reasons, operations |
+| Stocktaking | Same backend, panel and PDA app | **Done** — vendors, stocktakes by date, counting on the PDA, WMS Excel export |
 
 ## Run on your server
 
@@ -36,7 +37,7 @@ panel's nginx also proxies `/api/`, so PDAs can use the same address.
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows; use .venv/bin on Linux
 .venv/Scripts/python manage.py migrate
-.venv/Scripts/python manage.py test apps                                 # 84 tests, SQLite
+.venv/Scripts/python manage.py test apps                                 # 94 tests, SQLite
 docker compose run --rm --no-deps -e DJANGO_DEBUG=true backend python manage.py test apps   # same tests on PostgreSQL
 ```
 
@@ -125,6 +126,28 @@ Import a file from the command line (preview only; add `--commit` to apply):
 .venv/Scripts/python manage.py import_excel path/to/order_check.xlsx
 .venv/Scripts/python manage.py import_excel path/to/mapping.xlsx --kind barcodes --commit
 ```
+
+## Stocktaking (panel → Stocktaking, permission `stocktake.manage`)
+
+A separate team counts stock with the same PDA app. Users with the **Stocktaker** role see only their stocktakes on the
+PDA; checkers see only their orders; a role that holds both permissions gets both lists (switch icon in the top bar).
+
+1. Panel: create a **stocktake** = vendor + date + one or more counters (vendors can be added inline or on the *Vendors* tab).
+2. PDA: the stocktake appears from its date on (the next 7 days are shown as "starts on …") until it is closed.
+   Scan a barcode → type the count (units) → optional price → **Save** (or Done). Scanning the next item saves the
+   current one if its count is filled in. The same barcode can be recorded any number of times (several locations);
+   the PDA shows "already counted here: N units in M records". Barcodes do not need to be in the product catalog (vendors define their own). Records can be edited or
+   deleted while the stocktake is open. Everything is saved on the device first and synced in the background (offline OK).
+3. Panel: live totals per barcode and per counter, price conflicts, all records; **Close** when done (reopen if needed).
+4. **Excel for WMS**: one sheet, columns `barcode, count, price`, one row per barcode with all counters' counts summed;
+   barcode as scanned (text, leading zeros kept, no padding added); price = the last price entered for that barcode
+   (empty if none). **Detail Excel**: totals with product names and price conflicts, plus every record by counter and time.
+
+API: `GET/POST/PATCH vendors/`, `GET/POST/PATCH stocktakes/` (`?status=&vendor=&from=&to=`),
+`POST stocktakes/{id}/close|reopen/`, `GET stocktakes/{id}/totals|records/`, `GET stocktakes/{id}/export/?kind=wms|detail&lang=`,
+`GET stocktakers/`; PDA: `GET pda/stocktakes/`, `GET|POST pda/stocktakes/{id}/records/`
+(`{sent_at, records:[{id, barcode, quantity, price?, counted_at, updated_at, deleted?}]}`, idempotent per record id,
+newest `updated_at` wins).
 
 ## Key rules implemented
 

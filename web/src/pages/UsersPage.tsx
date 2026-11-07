@@ -39,7 +39,7 @@ export default function UsersPage() {
     onError: (e) => message.error(error(e)),
   });
 
-  const roles: Role[] = me?.role === "admin" ? ["admin", "supervisor", "checker"] : ["supervisor", "checker"];
+  const roles: Role[] = me?.role === "admin" ? ["admin", "supervisor", "checker", "stocktaker"] : ["supervisor", "checker", "stocktaker"];
 
   return (
     <>
@@ -47,7 +47,7 @@ export default function UsersPage() {
         <h2>{t("menu.users")}</h2>
         <Space>
           <Select allowClear placeholder={t("users.role")} style={{ width: 160 }} value={roleFilter} onChange={setRoleFilter}
-            options={(["admin", "supervisor", "checker"] as Role[]).map((r) => ({ value: r, label: t(`roles.${r}`) }))} />
+            options={(["admin", "supervisor", "checker", "stocktaker"] as Role[]).map((r) => ({ value: r, label: t(`roles.${r}`) }))} />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing({}); form.setFieldsValue({ role: "checker", username: "", full_name: "", password: "" }); }}>{t("users.new")}</Button>
         </Space>
       </div>
@@ -56,7 +56,7 @@ export default function UsersPage() {
         columns={[
           { title: t("users.username"), dataIndex: "username", render: (v) => <Ltr>{v}</Ltr> },
           { title: t("users.fullName"), dataIndex: "full_name" },
-          { title: t("users.role"), dataIndex: "role", render: (r: Role) => <Tag color={r === "admin" ? "red" : r === "supervisor" ? "blue" : "green"}>{t(`roles.${r}`)}</Tag> },
+          { title: t("users.role"), dataIndex: "role", render: (r: Role) => <Tag color={r === "admin" ? "red" : r === "supervisor" ? "blue" : r === "stocktaker" ? "orange" : "green"}>{t(`roles.${r}`)}</Tag> },
           { title: t("users.lastLogin"), dataIndex: "last_login", render: (v) => dateTime(v) },
           { title: t("users.scansToday"), dataIndex: "scans_today", render: (v) => num(v) },
           { title: t("common.status"), dataIndex: "is_active", render: (v, u) => <Switch checked={v} disabled={u.id === me?.id} onChange={() => setActive.mutate(u)} /> },

@@ -61,3 +61,4 @@ body {
 /* Sortable headers: keep long titles to ~two short lines; content-sized columns do the rest. */
 .oc-nowrap .ant-table-column-title { max-width: 9em; }
 .oc-clip { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.oc-row-deleted td { opacity: .5; text-decoration: line-through; }

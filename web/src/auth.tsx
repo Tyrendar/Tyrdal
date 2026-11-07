@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const d = await post<{ access: string; refresh: string; user: User }>("auth/login/", { username, password });
-    if (d.user.role === "checker") throw new ApiError(403, "checker_not_allowed");
+    if (d.user.role === "checker" || d.user.role === "stocktaker") throw new ApiError(403, "checker_not_allowed");
     tokens.set(d.access, d.refresh);
     setUser(d.user);
     return d.user;

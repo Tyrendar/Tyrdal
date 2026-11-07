@@ -85,7 +85,9 @@ export async function download(path: string, fallbackName: string): Promise<void
   let res = await call();
   if (res.status === 401 && (await tryRefresh())) res = await call();
   if (!res.ok) throw new ApiError(res.status, `http_${res.status}`);
-  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || fallbackName;
+  const cd = res.headers.get("Content-Disposition") || "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1];
+  const name = (utf8 && decodeURIComponent(utf8)) || /filename="([^"]+)"/.exec(cd)?.[1] || fallbackName;
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;

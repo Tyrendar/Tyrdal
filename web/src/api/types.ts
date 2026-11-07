@@ -1,4 +1,4 @@
-export type Role = "admin" | "supervisor" | "checker";
+export type Role = "admin" | "supervisor" | "checker" | "stocktaker";
 export type OrderStatus = "pending_assignment" | "assigned" | "in_progress" | "completed" | "cancelled";
 export type LineState = "pending" | "partial" | "ok" | "short" | "extra";
 export type Tab = "to_check" | "ok" | "issue";
@@ -143,3 +143,23 @@ export interface OperationsRow {
 }
 
 export interface PermissionMatrix { permissions: Record<string, string>; roles: Record<Role, string[]> }
+
+// --- Stocktaking ---------------------------------------------------------------------
+export interface Vendor { id: number; name: string; code: string; is_active: boolean; created_at: string; stocktakes_count?: number }
+export interface Stocktaker { id: number; username: string; name: string; open_stocktakes: number }
+export type StocktakeStatus = "open" | "closed";
+export interface StocktakeBrief {
+  id: number; vendor: { id: number; name: string; code: string }; date: string; status: StocktakeStatus; note: string;
+  created_at: string; closed_at: string | null; counters: { id: number; name: string; username: string }[];
+  records: number | null; quantity: number | null; barcodes: number | null;
+}
+export interface StocktakeDetail extends StocktakeBrief {
+  countable: boolean;
+  by_counter: { user_id: number; name: string; username: string; assigned: boolean; records: number; quantity: number; barcodes: number; last_at: string | null }[];
+  totals: { barcodes: number; quantity: number; records: number; price_conflicts: number; without_price: number };
+}
+export interface StockTotal { code: string; barcode: string; title: string; quantity: number; records: number; counters: number; price: string | null; price_conflict: boolean }
+export interface StockRecord {
+  id: string; user: string; user_id: number; barcode: string; code: string; product_id: string | null; title: string | null;
+  quantity: number; price: string | null; counted_at: string; deleted: boolean;
+}

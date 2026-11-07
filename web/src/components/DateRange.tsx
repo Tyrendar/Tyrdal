@@ -41,6 +41,24 @@ export function presetRange(preset: Preset, calendar: "jalali" | "gregorian"): [
   return [iso(first), iso(today)];
 }
 
+/** Single date picker (Jalali by default); value and onChange use Gregorian ISO (YYYY-MM-DD). */
+export function DateSingle({ value, onChange }: { value?: string | null; onChange?: (v: string | null) => void }) {
+  const { lang, calendar } = useI18n();
+  const cal = calendar === "jalali" ? persian : gregorian;
+  const loc = calendar === "jalali" ? (lang === "fa" ? persian_fa : persian_en) : (lang === "fa" ? gregorian_fa : gregorian_en);
+  const current = value ? new DateObject({ date: value, format: "YYYY-MM-DD", calendar: gregorian, locale: gregorian_en }).convert(cal, loc) : null;
+  return (
+    <DatePicker
+      value={current}
+      calendar={cal}
+      locale={loc}
+      calendarPosition={lang === "fa" ? "bottom-right" : "bottom-left"}
+      inputClass="ant-input oc-date-input"
+      onChange={(d: unknown) => onChange?.(d ? new DateObject(d as InstanceType<typeof DateObject>).convert(gregorian, gregorian_en).format("YYYY-MM-DD") : null)}
+    />
+  );
+}
+
 /** Date range picker that follows the selected calendar (Jalali by default) and
  *  always reports Gregorian ISO dates (YYYY-MM-DD) for the API. */
 export function DateRange({ value, onChange }: { value: [string, string] | null; onChange: (v: [string, string] | null) => void }) {

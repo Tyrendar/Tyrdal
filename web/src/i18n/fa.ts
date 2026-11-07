@@ -2,7 +2,7 @@ const fa = {
   app: { title: "سامانه کنترل سفارش", short: "کنترل سفارش" },
   menu: {
     dashboard: "پایش زنده", orders: "سفارش‌ها", imports: "بارگذاری سفارش", barcodes: "بارکدها", reasons: "دلایل مغایرت",
-    users: "کاربران", permissions: "دسترسی‌ها", audit: "گزارش رویدادها", reports: "گزارش‌ها",
+    users: "کاربران", permissions: "دسترسی‌ها", audit: "گزارش رویدادها", reports: "گزارش‌ها", stocktakes: "انبارگردانی",
   },
   reports: {
     today: "امروز", week: "این هفته", month: "این ماه", custom: "بازه دلخواه", export: "خروجی اکسل",
@@ -46,7 +46,7 @@ const fa = {
   },
   login: {
     title: "ورود به پنل مدیریت", username: "نام کاربری", password: "رمز عبور", submit: "ورود",
-    failed: "نام کاربری یا رمز عبور نادرست است", checkerNotAllowed: "حساب کنترل‌گر فقط در دستگاه PDA قابل استفاده است.",
+    failed: "نام کاربری یا رمز عبور نادرست است", checkerNotAllowed: "حساب کنترل‌گر و انبارگردان فقط در دستگاه PDA قابل استفاده است.",
   },
   status: {
     pending_assignment: "در انتظار تخصیص", assigned: "تخصیص‌یافته", in_progress: "در حال کنترل",
@@ -56,7 +56,7 @@ const fa = {
   tab: { to_check: "در انتظار کنترل", ok: "اسکن‌شده - بدون مغایرت", issue: "اسکن‌شده - دارای مغایرت" },
   discType: { short: "کسری", extra: "اضافه (خارج‌شده)", not_in_order: "خارج از سفارش (خارج‌شده)" },
   discStatus: { open: "بدون دلیل", reasoned: "ثبت‌شده با دلیل", resolved: "رفع‌شده" },
-  roles: { admin: "مدیر سیستم", supervisor: "سرپرست", checker: "کنترل‌گر" },
+  roles: { admin: "مدیر سیستم", supervisor: "سرپرست", checker: "کنترل‌گر", stocktaker: "انبارگردان" },
   dashboard: {
     waiting_assignment: "منتظر تخصیص", assigned_not_started: "تخصیص‌یافته، شروع نشده", in_progress: "در حال کنترل",
     open_issues: "دارای مغایرت باز", completed_today: "تکمیل‌شده امروز", completed_with_issues_today: "تکمیل امروز با مغایرت",
@@ -130,14 +130,30 @@ const fa = {
       "orders.view": "مشاهده سفارش‌ها", "orders.import": "بارگذاری سفارش", "orders.assign": "تخصیص سفارش",
       "orders.manage": "لغو و بازگشایی سفارش", "barcodes.manage": "مدیریت بارکدها", "reports.view": "گزارش‌ها و پایش",
       "audit.view": "گزارش رویدادها", "checking.perform": "کنترل سفارش با PDA",
+      "stocktake.manage": "مدیریت انبارگردانی و وندورها", "stocktake.perform": "انبارگردانی با PDA",
     } as Record<string, string>,
+  },
+  stocktake: {
+    list: "انبارگردانی‌ها", vendors: "وندورها", new: "انبارگردانی جدید", vendor: "وندور", date: "تاریخ",
+    counters: "انبارگردان‌ها", note: "توضیح", records: "ثبت‌ها", quantity: "تعداد کل", barcodes: "بارکد",
+    status: { open: "باز", closed: "بسته" }, open: "باز کردن", close: "بستن انبارگردانی", reopen: "بازگشایی",
+    closeConfirm: "انبارگردانی بسته شود؟ پس از بستن، انبارگردان‌ها نمی‌توانند ثبت کنند.", reopenConfirm: "انبارگردانی دوباره باز شود؟",
+    exportWms: "اکسل برای WMS", exportDetail: "اکسل جزئیات", wmsHint: "فایل WMS: ستون‌های barcode، count و price؛ هر بارکد یک ردیف و تعدادها جمع‌شده.",
+    newVendor: "وندور جدید", vendorName: "نام", vendorCode: "کد (اختیاری)", allVendors: "همه وندورها",
+    totalsTab: "جمع به تفکیک بارکد", recordsTab: "همه ثبت‌ها", byCounter: "به تفکیک انبارگردان", counter: "انبارگردان",
+    product: "کالا", count: "تعداد", price: "قیمت", priceConflict: "قیمت متفاوت", onlyConflicts: "فقط قیمت‌های متفاوت",
+    withoutPrice: "بدون قیمت", lastAt: "آخرین ثبت", time: "زمان", showDeleted: "نمایش حذف‌شده‌ها", deleted: "حذف‌شده",
+    notAssigned: "حذف‌شده از این انبارگردانی", startsOn: "شروع از", countable: "در حال انجام",
+    notStarted: "هنوز شروع نشده", searchHint: "بارکد یا نام کالا", priceConflictHint: "برای این بارکدها قیمت‌های متفاوت ثبت شده؛ در فایل آخرین قیمت آمده است.",
+    noCounters: "هنوز انبارگردانی تعریف نشده؛ ابتدا کاربری با نقش «انبارگردان» بسازید.", openTasks: "انبارگردانی باز",
   },
   audit: { action: "رویداد", entity: "موجودیت", order: "سفارش" },
   codes: {
     network_error: "ارتباط با سرور برقرار نشد", permission_denied: "دسترسی ندارید", not_authenticated: "ابتدا وارد شوید",
     already_assigned: "این سفارش کنترل‌گر فعال دارد؛ از «تخصیص مجدد» استفاده کنید", same_checker: "سفارش هم‌اکنون به همین کنترل‌گر تخصیص دارد",
     invalid_checker: "کاربر انتخاب‌شده کنترل‌گر فعال نیست", order_locked: "سفارش بسته است", not_assigned: "سفارش کنترل‌گر فعال ندارد",
-    note_required: "توضیح الزامی است", not_completed: "فقط سفارش تکمیل‌شده قابل بازگشایی است",
+    note_required: "توضیح الزامی است", stocktake_closed: "انبارگردانی بسته است", stocktake_open: "انبارگردانی باز است",
+    invalid_counter: "کاربر انتخاب‌شده انبارگردان فعال نیست", stocktake_not_started: "انبارگردانی هنوز شروع نشده", not_completed: "فقط سفارش تکمیل‌شده قابل بازگشایی است",
     duplicate_file: "این فایل قبلاً ثبت شده است", unsupported_file_type: "فقط فایل .xlsx پذیرفته می‌شود",
     file_required: "فایلی انتخاب نشده", batch_not_committable: "این بارگذاری قابل ثبت نیست",
     barcode_owned_by_other_product: "این بارکد متعلق به کالای دیگری است", invalid_barcode: "بارکد نامعتبر",

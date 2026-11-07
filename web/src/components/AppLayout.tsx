@@ -1,5 +1,5 @@
 import {
-  AuditOutlined, BarChartOutlined, BarcodeOutlined, DashboardOutlined, KeyOutlined, LogoutOutlined, OrderedListOutlined,
+  AuditOutlined, BarChartOutlined, BarcodeOutlined, ContainerOutlined, DashboardOutlined, KeyOutlined, LogoutOutlined, OrderedListOutlined,
   TagsOutlined, TeamOutlined, UploadOutlined, UserOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Grid, Layout, Menu, Segmented, Space, Typography } from "antd";
@@ -22,6 +22,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     can("orders.view") && { key: "/dashboard", icon: <DashboardOutlined />, label: t("menu.dashboard") },
     can("orders.view") && { key: "/orders", icon: <OrderedListOutlined />, label: t("menu.orders") },
     can("reports.view") && { key: "/reports", icon: <BarChartOutlined />, label: t("menu.reports") },
+    can("stocktake.manage") && { key: "/stocktakes", icon: <ContainerOutlined />, label: t("menu.stocktakes") },
     (can("orders.import") || can("barcodes.manage")) && { key: "/imports", icon: <UploadOutlined />, label: t("menu.imports") },
     { key: "/barcodes", icon: <BarcodeOutlined />, label: t("menu.barcodes") },
     { key: "/reasons", icon: <TagsOutlined />, label: t("menu.reasons") },

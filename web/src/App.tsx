@@ -17,6 +17,8 @@ import OrdersPage from "./pages/OrdersPage";
 import PermissionsPage from "./pages/PermissionsPage";
 import ReasonsPage from "./pages/ReasonsPage";
 import ReportsPage from "./pages/ReportsPage";
+import StocktakeDetailPage from "./pages/StocktakeDetailPage";
+import StocktakesPage from "./pages/StocktakesPage";
 import UsersPage from "./pages/UsersPage";
 
 function ReasonsCache() {
@@ -38,7 +40,7 @@ export default function App() {
   if (!ready) return <div style={{ display: "grid", placeItems: "center", height: "100%" }}><Spin size="large" /></div>;
   if (!user) return <LoginPage />;
 
-  const home = can("orders.view") ? "/dashboard" : can("users.manage") ? "/users" : "/barcodes";
+  const home = can("orders.view") ? "/dashboard" : can("stocktake.manage") ? "/stocktakes" : can("users.manage") ? "/users" : "/barcodes";
   return (
     <AppLayout>
       <ReasonsCache />
@@ -50,6 +52,8 @@ export default function App() {
         {(can("orders.import") || can("barcodes.manage")) && <Route path="/imports" element={<ImportsPage />} />}
         {(can("orders.import") || can("barcodes.manage")) && <Route path="/imports/:id" element={<ImportDetailPage />} />}
         {can("reports.view") && <Route path="/reports" element={<ReportsPage />} />}
+        {can("stocktake.manage") && <Route path="/stocktakes" element={<StocktakesPage />} />}
+        {can("stocktake.manage") && <Route path="/stocktakes/:id" element={<StocktakeDetailPage />} />}
         <Route path="/barcodes" element={<BarcodesPage />} />
         <Route path="/reasons" element={<ReasonsPage />} />
         {can("users.manage") && <Route path="/users" element={<UsersPage />} />}

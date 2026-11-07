@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.errors import DomainError
 from apps.accounts.models import Device
-from apps.accounts.permissions import require
+from apps.accounts.permissions import require, require_any
 from apps.audit.services import record
 from apps.catalog.models import Barcode
 from apps.orders.models import Order, OrderLine, OrderStatus
@@ -174,7 +174,7 @@ class PdaBarcodesView(APIView):
     without it, every active row. Paginated with ?after_id= for large catalogs.
     """
 
-    permission_classes = [require("checking.perform")]
+    permission_classes = [require_any("checking.perform", "stocktake.perform")]
     PAGE = 5000
 
     def get(self, request):

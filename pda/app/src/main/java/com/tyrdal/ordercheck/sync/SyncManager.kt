@@ -7,6 +7,11 @@ import com.tyrdal.ordercheck.data.EventsRequest
 import com.tyrdal.ordercheck.data.OfflineException
 import com.tyrdal.ordercheck.data.OrderStore
 import com.tyrdal.ordercheck.data.Prefs
+import com.tyrdal.ordercheck.data.StockPushRequest
+import com.tyrdal.ordercheck.data.StockRecordDto
+import com.tyrdal.ordercheck.data.StocktakeDto
+import com.tyrdal.ordercheck.data.db.StockRecordEntity
+import com.tyrdal.ordercheck.data.db.StockTaskEntity
 import com.tyrdal.ordercheck.data.db.AppDb
 import com.tyrdal.ordercheck.data.db.BarcodeEntity
 import com.tyrdal.ordercheck.data.json
@@ -19,12 +24,17 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import java.math.BigDecimal
+import java.time.Instant
 import java.time.OffsetDateTime
 
 /**
@@ -32,7 +42,8 @@ import java.time.OffsetDateTime
  * - pushes outbox events in order (batches of up to 200) with the PDA clock as `sent_at`
  *   so the server can correct clock skew;
  * - refreshes the checker's order list and prefetches order snapshots;
- * - keeps the local barcode mapping and discrepancy reasons up to date.
+ * - keeps the local barcode mapping and discrepancy reasons up to date;
+ * - stocktaking: pushes unsynced count records and refreshes the counter's stocktakes.
  * Runs continuously while logged in; a failed request just means "offline", nothing is lost.
  */
 class SyncManager(
@@ -42,15 +53,20 @@ class SyncManager(
     private val store: OrderStore,
     private val prefs: Prefs,
     private val onReasons: (List<Reason>) -> Unit,
+    /** The signed-in user's permissions: decides which lists are kept up to date. */
+    private val perms: () -> Set<String>,
 ) {
     private val _online = MutableStateFlow(true)
     val online: StateFlow<Boolean> = _online
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError
-    val pendingEvents = db.outbox().countAll()
+    /** Check events + stock records not yet on the server. */
+    val pendingEvents = combine(db.outbox().countAll(), db.stock().unsyncedCount()) { a, b -> a + b }
 
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val pushLock = Mutex()
+    private val stockLock = Mutex()
+    private var lastStock = 0L
     private var job: Job? = null
     private var lastOrders = 0L
     private var lastBarcodes = 0L
@@ -71,9 +87,12 @@ class SyncManager(
     fun trigger() { wake.trySend(Unit) }
 
     private suspend fun cycle() {
+        val p = perms()
         pushAll()
+        pushStock()
         val now = System.currentTimeMillis()
-        if (now - lastOrders > 30_000) { refreshOrders(); lastOrders = now }
+        if ("checking.perform" in p && now - lastOrders > 30_000) { refreshOrders(); lastOrders = now }
+        if ("stocktake.perform" in p && now - lastStock > 30_000) { refreshStocktakes(); lastStock = now }
         if (now - lastBarcodes > 5 * 60_000) { if (syncBarcodes()) lastBarcodes = now }
     }
 
@@ -151,6 +170,63 @@ class SyncManager(
         return true
     }
 
+    // --- Stocktaking ---------------------------------------------------------------
+    /** Sends unsynced records (oldest edit first). A record edited while in flight stays unsynced. */
+    suspend fun pushStock() = stockLock.withLock {
+        val dao = db.stock()
+        while (true) {
+            val batch = dao.unsynced(200)
+            if (batch.isEmpty()) return@withLock
+            for ((taskId, recs) in batch.groupBy { it.taskId }) {
+                val res = try {
+                    api.pushStock(taskId, StockPushRequest(OffsetDateTime.now().toString(), recs.map { it.toDto() }))
+                        .also { _online.value = true; _lastError.value = null }
+                } catch (e: OfflineException) {
+                    _online.value = false; return@withLock
+                } catch (e: ApiException) {
+                    if (e.code in TASK_ERRORS || e.status == 404) {
+                        // Can't be accepted now (closed / not started / no longer mine): kept, and retried if it reopens.
+                        dao.setErrorForTask(taskId, e.code)
+                        dao.markNotCountable(taskId, if (e.code == "stocktake_closed") "closed" else dao.getTask(taskId)?.status ?: "open")
+                        continue
+                    }
+                    _lastError.value = e.code
+                    return@withLock
+                }
+                val versions = recs.associate { it.id to it.updatedAt }
+                res.accepted.forEach { id -> versions[id]?.let { dao.markSynced(id, it) } }
+                res.rejected.forEach { r -> r.id?.let { dao.setError(it, r.error) } }
+                dao.upsertTasks(listOf(res.stocktake.toEntity()))
+            }
+        }
+    }
+
+    suspend fun refreshStocktakes(): Boolean {
+        val list = net { api.myStocktakes() } ?: return false
+        val dao = db.stock()
+        dao.upsertTasks(list.map { it.toEntity() })
+        dao.deactivateExcept(list.map { it.id }.ifEmpty { listOf(-1L) })
+        for (t in list) {
+            if (t.countable) dao.clearErrors(t.id)
+            // New device / reinstalled app: bring back my records so totals and edits work.
+            if (t.myRecords > 0 && dao.countAll(t.id) == 0) restoreStock(t.id)
+        }
+        return true
+    }
+
+    private suspend fun restoreStock(taskId: Long) {
+        val r = net { api.stockRecords(taskId) } ?: return
+        db.stock().insertIfAbsent(r.records.map { d ->
+            val code = com.tyrdal.ordercheck.domain.Barcode.canonical(d.barcode)
+            StockRecordEntity(
+                id = d.id, taskId = taskId, barcode = d.barcode, code = code, title = db.barcodes().get(code)?.title,
+                quantity = d.quantity,
+                price = d.price?.contentOrNull?.let { runCatching { BigDecimal(it).stripTrailingZeros().toPlainString() }.getOrNull() },
+                countedAt = millis(d.countedAt), updatedAt = millis(d.updatedAt), deleted = false, synced = true, error = null,
+            )
+        })
+    }
+
     /** Central barcode mapping → local cache (full on first run, then changes only). */
     suspend fun syncBarcodes(): Boolean {
         val since = prefs.barcodeSince
@@ -172,7 +248,19 @@ class SyncManager(
         return true
     }
 
-    companion object { private const val TAG = "Sync" }
+    companion object {
+        private const val TAG = "Sync"
+        private val TASK_ERRORS = setOf("stocktake_closed", "stocktake_not_started", "not_a_counter")
+    }
 }
 
 fun ReasonDto.toDomain() = Reason(id, code, nameFa, nameEn, appliesTo, requiresNote, defaultFor, sortOrder)
+
+fun StocktakeDto.toEntity() = StockTaskEntity(id, vendor, vendorCode, date, status, note, countable, myRecords, active = true)
+
+private fun StockRecordEntity.toDto() = StockRecordDto(
+    id = id, barcode = barcode, quantity = quantity, price = price?.let { JsonPrimitive(it) },
+    countedAt = Instant.ofEpochMilli(countedAt).toString(), updatedAt = Instant.ofEpochMilli(updatedAt).toString(), deleted = deleted,
+)
+
+private fun millis(iso: String): Long = runCatching { OffsetDateTime.parse(iso).toInstant().toEpochMilli() }.getOrDefault(System.currentTimeMillis())

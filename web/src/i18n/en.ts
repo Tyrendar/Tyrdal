@@ -4,7 +4,7 @@ const en: Dict = {
   app: { title: "Order Checking System", short: "Order Checking" },
   menu: {
     dashboard: "Live board", orders: "Orders", imports: "Import orders", barcodes: "Barcodes", reasons: "Discrepancy reasons",
-    users: "Users", permissions: "Permissions", audit: "Audit log", reports: "Reports",
+    users: "Users", permissions: "Permissions", audit: "Audit log", reports: "Reports", stocktakes: "Stocktaking",
   },
   reports: {
     today: "Today", week: "This week", month: "This month", custom: "Custom", export: "Export to Excel",
@@ -48,7 +48,7 @@ const en: Dict = {
   },
   login: {
     title: "Admin panel sign in", username: "Username", password: "Password", submit: "Sign in",
-    failed: "Wrong username or password", checkerNotAllowed: "Checker accounts can only be used on the PDA.",
+    failed: "Wrong username or password", checkerNotAllowed: "Checker and stocktaker accounts can only be used on the PDA.",
   },
   status: {
     pending_assignment: "Pending assignment", assigned: "Assigned", in_progress: "In progress",
@@ -58,7 +58,7 @@ const en: Dict = {
   tab: { to_check: "Items to check", ok: "Scanned – no issue", issue: "Scanned – with issue" },
   discType: { short: "Shortage", extra: "Extra (removed)", not_in_order: "Not in order (removed)" },
   discStatus: { open: "Needs reason", reasoned: "Recorded with reason", resolved: "Resolved" },
-  roles: { admin: "Admin", supervisor: "Supervisor", checker: "Checker" },
+  roles: { admin: "Admin", supervisor: "Supervisor", checker: "Checker", stocktaker: "Stocktaker" },
   dashboard: {
     waiting_assignment: "Waiting for assignment", assigned_not_started: "Assigned, not started", in_progress: "Being checked",
     open_issues: "With open issues", completed_today: "Completed today", completed_with_issues_today: "Completed today with issues",
@@ -132,14 +132,30 @@ const en: Dict = {
       "orders.view": "View orders", "orders.import": "Import orders", "orders.assign": "Assign orders",
       "orders.manage": "Cancel and reopen orders", "barcodes.manage": "Manage barcodes", "reports.view": "Reports and monitoring",
       "audit.view": "Audit log", "checking.perform": "Check orders on the PDA",
+      "stocktake.manage": "Manage stocktaking and vendors", "stocktake.perform": "Count stock on the PDA",
     },
+  },
+  stocktake: {
+    list: "Stocktakes", vendors: "Vendors", new: "New stocktake", vendor: "Vendor", date: "Date",
+    counters: "Counters", note: "Note", records: "Records", quantity: "Total count", barcodes: "Barcodes",
+    status: { open: "Open", closed: "Closed" }, open: "Open", close: "Close stocktake", reopen: "Reopen",
+    closeConfirm: "Close this stocktake? Counters can no longer add counts.", reopenConfirm: "Reopen this stocktake?",
+    exportWms: "Excel for WMS", exportDetail: "Detail Excel", wmsHint: "WMS file: columns barcode, count, price; one row per barcode with counts summed.",
+    newVendor: "New vendor", vendorName: "Name", vendorCode: "Code (optional)", allVendors: "All vendors",
+    totalsTab: "Totals by barcode", recordsTab: "All records", byCounter: "By counter", counter: "Counter",
+    product: "Product", count: "Count", price: "Price", priceConflict: "Different prices", onlyConflicts: "Only different prices",
+    withoutPrice: "Without price", lastAt: "Last record", time: "Time", showDeleted: "Show deleted", deleted: "Deleted",
+    notAssigned: "Removed from this stocktake", startsOn: "Starts on", countable: "In progress",
+    notStarted: "Not started yet", searchHint: "Barcode or product name", priceConflictHint: "These barcodes have different prices; the file uses the last one entered.",
+    noCounters: "No stocktakers yet; create a user with the Stocktaker role first.", openTasks: "Open stocktakes",
   },
   audit: { action: "Action", entity: "Entity", order: "Order" },
   codes: {
     network_error: "Cannot reach the server", permission_denied: "You do not have permission", not_authenticated: "Please sign in",
     already_assigned: "This order already has an active checker; use Reassign", same_checker: "Already assigned to this checker",
     invalid_checker: "Selected user is not an active checker", order_locked: "The order is closed", not_assigned: "The order has no active checker",
-    note_required: "A note is required", not_completed: "Only completed orders can be reopened",
+    note_required: "A note is required", stocktake_closed: "The stocktake is closed", stocktake_open: "The stocktake is open",
+    invalid_counter: "The selected user is not an active stocktaker", stocktake_not_started: "The stocktake has not started yet", not_completed: "Only completed orders can be reopened",
     duplicate_file: "This file was already imported", unsupported_file_type: "Only .xlsx files are accepted",
     file_required: "No file selected", batch_not_committable: "This upload cannot be committed",
     barcode_owned_by_other_product: "This barcode belongs to another product", invalid_barcode: "Invalid barcode",

@@ -109,6 +109,11 @@ class Api(private val prefs: Prefs, private val onLoggedOut: () -> Unit) {
 
     suspend fun finish(orderId: Long): FinishResponse = decode(call("POST", "pda/orders/$orderId/finish/"))
 
+    suspend fun myStocktakes(): List<StocktakeDto> = decode(call("GET", "pda/stocktakes/"))
+    suspend fun stockRecords(id: Long): StockRecordsResponse = decode(call("GET", "pda/stocktakes/$id/records/"))
+    suspend fun pushStock(id: Long, req: StockPushRequest): StockPushResponse =
+        decode(call("POST", "pda/stocktakes/$id/records/", json.encodeToString(StockPushRequest.serializer(), req)))
+
     suspend fun barcodes(since: String?, afterId: Long): BarcodesResponse {
         val q = buildString {
             append("pda/barcodes/?after_id=").append(afterId)
