@@ -3,6 +3,8 @@ from django.db import models
 
 
 class Role(models.TextChoices):
+    """Codes of the built-in roles. More roles can be created in the panel (AppRole)."""
+
     ADMIN = "admin", "Admin"
     SUPERVISOR = "supervisor", "Supervisor"
     CHECKER = "checker", "Checker"
@@ -38,8 +40,34 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, set[str]] = {
 }
 
 
+BUILTIN_ROLE_NAMES = {
+    Role.ADMIN: ("مدیر سیستم", "Admin"), Role.SUPERVISOR: ("سرپرست", "Supervisor"),
+    Role.CHECKER: ("کنترل‌گر", "Checker"), Role.STOCKTAKER: ("انبارگردان", "Stocktaker"),
+}
+# Permissions that only make sense on the PDA: holding nothing else means no panel access.
+PDA_PERMISSIONS = {"checking.perform", "stocktake.perform"}
+
+
+class AppRole(models.Model):
+    """A named set of permissions. Built-in roles cannot be deleted; admin always holds everything."""
+
+    code = models.SlugField(max_length=40, unique=True)
+    name_fa = models.CharField(max_length=100)
+    name_en = models.CharField(max_length=100, blank=True)
+    is_system = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return self.name_fa or self.code
+
+
 class User(AbstractUser):
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.CHECKER, db_index=True)
+    """A user may hold several roles; permissions are the union of the roles' permissions."""
+
+    roles = models.ManyToManyField(AppRole, blank=True, related_name="users")
     full_name = models.CharField(max_length=150, blank=True)
     language = models.CharField(max_length=5, choices=[("fa", "فارسی"), ("en", "English")], default="fa")
 
@@ -53,19 +81,40 @@ class User(AbstractUser):
     def display_name(self) -> str:
         return self.full_name or self.username
 
+    def role_codes(self) -> list[str]:
+        if not self.pk:
+            return []
+        return list(self.roles.values_list("code", flat=True))
+
+    @property
+    def is_admin(self) -> bool:
+        return self.is_superuser or Role.ADMIN in self.role_codes()
+
     def permission_codes(self) -> set[str]:
         if not self.is_active:
             return set()
-        if self.role == Role.ADMIN or self.is_superuser:
+        codes = self.role_codes()
+        if self.is_superuser or Role.ADMIN in codes:
             return set(PERMISSIONS)
-        return set(RolePermission.objects.filter(role=self.role).values_list("permission", flat=True))
+        return set(RolePermission.objects.filter(role__in=codes).values_list("permission", flat=True))
 
     def has_app_perm(self, code: str) -> bool:
         return code in self.permission_codes()
 
+    def has_role_perm(self, code: str) -> bool:
+        """Holds `code` through a role other than admin (admins hold everything but are not checkers/counters)."""
+        return self.is_active and RolePermission.objects.filter(
+            role__in=[c for c in self.role_codes() if c != Role.ADMIN], permission=code).exists()
+
+
+def users_with_role_perm(code: str):
+    """Active users who hold `code` through a non-admin role (checkers, stocktakers, custom roles)."""
+    roles = set(RolePermission.objects.filter(permission=code).values_list("role", flat=True)) - {Role.ADMIN}
+    return User.objects.filter(is_active=True, roles__code__in=roles).distinct()
+
 
 class RolePermission(models.Model):
-    role = models.CharField(max_length=20, choices=Role.choices)
+    role = models.CharField(max_length=40, help_text="AppRole.code")
     permission = models.CharField(max_length=50, choices=[(k, k) for k in PERMISSIONS])
 
     class Meta:

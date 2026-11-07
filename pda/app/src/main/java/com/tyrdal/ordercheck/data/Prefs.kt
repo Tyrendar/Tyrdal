@@ -44,6 +44,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("debounce", 700)
         set(v) = sp.edit { putInt("debounce", v) }
 
+    /** Change-feed position of the stocktake master cache. */
+    var stockMasterSince: String?
+        get() = sp.getString("sm_since", null)
+        set(v) = sp.edit { putString("sm_since", v) }
+
     var barcodeSince: String?
         get() = sp.getString("bc_since", null)
         set(v) = sp.edit { putString("bc_since", v) }

@@ -37,7 +37,7 @@ panel's nginx also proxies `/api/`, so PDAs can use the same address.
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows; use .venv/bin on Linux
 .venv/Scripts/python manage.py migrate
-.venv/Scripts/python manage.py test apps                                 # 94 tests, SQLite
+.venv/Scripts/python manage.py test apps                                 # 114 tests, SQLite
 docker compose run --rm --no-deps -e DJANGO_DEBUG=true backend python manage.py test apps   # same tests on PostgreSQL
 ```
 
@@ -54,7 +54,14 @@ npm run dev
 Panel notes: Persian/RTL is the default (switch FA/EN and Jalali/Gregorian in the
 header). Barcodes, product IDs and aisle codes are always rendered LTR. Dates are shown in
 Asia/Tehran time; date filters send Gregorian `YYYY-MM-DD` to the API. Menu items and actions
-follow the signed-in user's permissions. Checker accounts cannot sign in to the panel.
+follow the signed-in user's permissions. Accounts whose roles only allow PDA work (checking orders, counting stock)
+cannot sign in to the panel.
+
+**Roles:** a user can have several roles and gets the union of their permissions (e.g. checker + stocktaker sees
+both lists on the PDA). Built-in roles: Admin (always everything), Supervisor, Checker, Stocktaker. More roles can be
+created under System → Permissions (name them, tick permissions, then give them to users under Users). Built-in
+roles cannot be deleted; a role still held by users cannot be deleted. Permissions are the fixed feature switches
+listed on that page.
 
 ## Reports (panel → Reports, permission `reports.view`)
 
@@ -127,6 +134,12 @@ Import a file from the command line (preview only; add `--commit` to apply):
 .venv/Scripts/python manage.py import_excel path/to/mapping.xlsx --kind barcodes --commit
 ```
 
+## Panel layout
+
+Two main tabs in the header: **Order checking** (live board, orders, import, barcodes, reasons, reports) and
+**Stocktaking** (stocktakes, product list, vendors, stocktaking reports). Users, permissions and the audit log are
+under *System* in both. Each tab shows only what the signed-in user's permissions allow.
+
 ## Stocktaking (panel → Stocktaking, permission `stocktake.manage`)
 
 A separate team counts stock with the same PDA app. Users with the **Stocktaker** role see only their stocktakes on the
@@ -139,14 +152,31 @@ PDA; checkers see only their orders; a role that holds both permissions gets bot
    the PDA shows "already counted here: N units in M records". Barcodes do not need to be in the product catalog (vendors define their own). Records can be edited or
    deleted while the stocktake is open. Everything is saved on the device first and synced in the background (offline OK).
 3. Panel: live totals per barcode and per counter, price conflicts, all records; **Close** when done (reopen if needed).
-4. **Excel for WMS**: one sheet, columns `barcode, count, price`, one row per barcode with all counters' counts summed;
-   barcode as scanned (text, leading zeros kept, no padding added); price = the last price entered for that barcode
-   (empty if none). **Detail Excel**: totals with product names and price conflicts, plus every record by counter and time.
+4. **Excel for WMS**: one sheet, columns `barcode, title, count, price`, one row per barcode + title with all counters'
+   counts summed; barcode as scanned (text, leading zeros kept, no padding added); price = the last price entered
+   (empty if none). **Detail Excel**: totals with price conflicts, plus every record by counter and time.
+
+**Stocktaking reports** (separate from the checking reports; Today / week / month / custom, filter by vendor and
+counter, Excel export): *Overview* (open/upcoming stocktakes, records, units, barcodes, active time, records per
+hour, typed titles, value = count × price, per day), *Counters* (records, units, active time, records/units per
+hour, typed titles, edited, deleted), *Vendors* (units, barcodes, counters, value), *Stocktakes* (per stocktake:
+records, units, first/last record, elapsed) and *Typed titles* (titles counters typed, with the list's other titles
+for that barcode, for review). API: `GET stocktake-reports/{overview|counters|vendors|stocktakes|new-titles}/?from=&to=&vendor=&counter=`.
+
+**Product list (panel → Stocktaking → Product list)** — the stocktaking master, independent of the order-checking
+barcode mapping. Import a CSV/Excel with `barcode` + `title` columns (Persian headers `بارکد` / `شرح کالا` work; a
+price column is stored but not used). Preview first, then *Add and update* (never removes) or *Replace* (removes
+previously imported rows missing from the file; rows added in the panel or by counters are kept). Single rows can be
+added, edited and deleted in the panel; the list can be exported. On the PDA (downloaded once, then changes only):
+one title → shown; several titles → the counter picks one (or "other title"); not in the list → the counter types
+the title, and that title is added to the list marked as *counter* so the next scan finds it.
 
 API: `GET/POST/PATCH vendors/`, `GET/POST/PATCH stocktakes/` (`?status=&vendor=&from=&to=`),
 `POST stocktakes/{id}/close|reopen/`, `GET stocktakes/{id}/totals|records/`, `GET stocktakes/{id}/export/?kind=wms|detail&lang=`,
-`GET stocktakers/`; PDA: `GET pda/stocktakes/`, `GET|POST pda/stocktakes/{id}/records/`
-(`{sent_at, records:[{id, barcode, quantity, price?, counted_at, updated_at, deleted?}]}`, idempotent per record id,
+`GET stocktakers/`, `GET/POST/PATCH/DELETE stocktake-master/` (`?q=&source=&multi=`), `POST stocktake-master/import/`
+(multipart `file`, `mode=merge|replace`, `dry_run=true|false`), `GET stocktake-master/stats|export/`; PDA: `GET pda/stocktake-master/?since=&after_id=`
+(change feed), `GET pda/stocktakes/`, `GET|POST pda/stocktakes/{id}/records/`
+(`{sent_at, records:[{id, barcode, title, title_typed, quantity, price?, counted_at, updated_at, deleted?}]}`, idempotent per record id,
 newest `updated_at` wins).
 
 ## Key rules implemented
@@ -184,7 +214,8 @@ Errors: `{"code": "<stable_key>", "detail": "...", "data": {...}}`.
 | `POST auth/login/` | — | `{username, password, device_serial?, device_model?, app_version?}` → tokens + user |
 | `POST auth/refresh/` · `GET/PATCH auth/me/` | any | token refresh · profile / language |
 | `GET/POST/PATCH users/` · `POST users/{id}/reset-password/` · `GET users/activity/` | users.manage | user admin (no delete; deactivate) |
-| `GET/PUT role-permissions/` | permissions.manage | role → permission matrix |
+| `GET/PUT role-permissions/` | permissions.manage | role → permission matrix (`{role: code, permissions: [...]}`) |
+| `GET/POST/PATCH/DELETE roles/` | permissions.manage (read: users.manage) | roles: `{name_fa, name_en}`; users get `roles: [codes]` |
 | `GET checkers/` | orders.view | active checkers with current workload |
 | `GET orders/summary/` | orders.view | live board counters |
 | `GET audit/?action=&user=&from=&to=` | audit.view | global audit log |

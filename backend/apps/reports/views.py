@@ -113,6 +113,10 @@ def _cell(v, kind, lang):
         return PICK[lang].get(v, v)
     if kind == "status":
         return STATUS[lang].get(v, v)
+    if kind == "date":
+        return jdatetime.date.fromgregorian(date=v).strftime("%Y/%m/%d") if lang == "fa" else v
+    if kind == "num" and not isinstance(v, (int, float)):
+        return float(v)  # Decimal
     if kind == "dt":
         local = v.astimezone(TZ)
         if lang == "fa":
@@ -121,13 +125,15 @@ def _cell(v, kind, lang):
     return v
 
 
-def xlsx(name: str, period: dict, columns, rows, lang: str) -> HttpResponse:
+def xlsx(name: str, period: dict, columns, rows, lang: str, titles: tuple[str, str] | None = None) -> HttpResponse:
+    """`titles` = (Persian, English) sheet title; defaults to TITLES[name]."""
+    titles = titles or TITLES[name]
     wb = Workbook()
     ws = wb.active
-    ws.title = TITLES[name][1][:31]
+    ws.title = titles[1][:31]
     if lang == "fa":
         ws.sheet_view.rightToLeft = True
-    title = TITLES[name][0 if lang == "fa" else 1]
+    title = titles[0 if lang == "fa" else 1]
     ws.append([f"{title}  ({period['from']} → {period['to']})"])
     ws["A1"].font = Font(bold=True, size=13)
     ws.append([])

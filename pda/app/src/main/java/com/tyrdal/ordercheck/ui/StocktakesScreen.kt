@@ -71,10 +71,11 @@ fun StocktakesScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit, onOrders: (
     val tasks by app.db.stock().tasks().collectAsState(initial = emptyList())
     val user by app.user.collectAsState()
     val pending by app.sync.pendingEvents.collectAsState(initial = 0)
+    val masterCount by app.db.stock().masterCount().collectAsState(initial = 0)
     var refreshing by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { refreshing = true; app.sync.refreshStocktakes(); refreshing = false }
+    LaunchedEffect(Unit) { refreshing = true; app.sync.refreshStocktakes(); refreshing = false; app.sync.syncStockMaster() }
 
     Scaffold(
         topBar = {
@@ -104,6 +105,10 @@ fun StocktakesScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit, onOrders: (
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             if (refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(
+                if (masterCount > 0) stringResource(R.string.st_master_n, java.text.NumberFormat.getInstance().format(masterCount)) else stringResource(R.string.st_master_loading),
+                style = MaterialTheme.typography.bodySmall, color = Palette.Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
             if (tasks.isEmpty() && !refreshing) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.no_stocktakes), style = MaterialTheme.typography.titleMedium, color = Palette.Muted)

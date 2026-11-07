@@ -1,12 +1,13 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tabs, Tag } from "antd";
+import { Alert, App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tag } from "antd";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { get, patch, post, qs, type Page } from "../api/client";
 import type { StocktakeBrief, Stocktaker, Vendor } from "../api/types";
 import { DateRange, DateSingle } from "../components/DateRange";
 import { Ltr } from "../components/common";
+import StocktakeMasterTab from "./StocktakeMasterTab";
 import { useI18n } from "../i18n";
 
 export const useVendors = (activeOnly = false) =>
@@ -18,18 +19,14 @@ export function StatusTag({ status }: { status: StocktakeBrief["status"] }) {
   return <Tag color={status === "open" ? "processing" : "default"}>{t(`stocktake.status.${status}`)}</Tag>;
 }
 
-export default function StocktakesPage() {
+/** Stocktaking section pages: stocktakes, product list, vendors (each its own menu item). */
+export default function StocktakesPage({ view = "list" }: { view?: "list" | "master" | "vendors" }) {
   const { t } = useI18n();
-  const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") === "vendors" ? "vendors" : "list";
+  const title = { list: t("menu.stocktakeList"), master: t("menu.master"), vendors: t("menu.vendors") }[view];
   return (
     <>
-      <div className="oc-page-header"><h2>{t("menu.stocktakes")}</h2></div>
-      <Tabs activeKey={tab} onChange={(k) => setSp(k === "list" ? {} : { tab: k }, { replace: true })}
-        items={[
-          { key: "list", label: t("stocktake.list"), children: <StocktakeList /> },
-          { key: "vendors", label: t("stocktake.vendors"), children: <Vendors /> },
-        ]} />
+      <div className="oc-page-header"><h2>{title}</h2></div>
+      {view === "list" ? <StocktakeList /> : view === "master" ? <StocktakeMasterTab /> : <Vendors />}
     </>
   );
 }
@@ -60,7 +57,7 @@ function StocktakeList() {
       <Table<StocktakeBrief>
         className="oc-nowrap" rowKey="id" size="middle" loading={list.isLoading} dataSource={list.data?.results ?? []}
         tableLayout="auto" scroll={{ x: "max-content" }}
-        onRow={(r) => ({ onClick: () => nav(`/stocktakes/${r.id}`), style: { cursor: "pointer" } })}
+        onRow={(r) => ({ onClick: () => nav(`/stocktaking/${r.id}`), style: { cursor: "pointer" } })}
         pagination={{ current: page, pageSize: 50, total: list.data?.count, onChange: setPage, showSizeChanger: false,
           showTotal: (n) => `${t("common.total")}: ${num(n)}` }}
         columns={[
@@ -74,7 +71,7 @@ function StocktakeList() {
           { title: t("stocktake.note"), dataIndex: "note", render: (v) => <span className="oc-clip" title={v}>{v}</span> },
         ]}
       />
-      <StocktakeForm open={creating} onClose={() => setCreating(false)} onSaved={(s) => nav(`/stocktakes/${s.id}`)} />
+      <StocktakeForm open={creating} onClose={() => setCreating(false)} onSaved={(s) => nav(`/stocktaking/${s.id}`)} />
     </>
   );
 }

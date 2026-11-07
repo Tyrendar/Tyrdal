@@ -10,10 +10,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.audit.services import record
 
 from .errors import DomainError
-from .models import Role, RolePermission, User
-from .permissions import require
+from .models import AppRole, Role, RolePermission, User, users_with_role_perm
+from .permissions import require, require_any
 from .serializers import (
-    LoginSerializer, ResetPasswordSerializer, RolePermissionsSerializer, UserSerializer, role_permission_matrix,
+    AppRoleSerializer, LoginSerializer, ResetPasswordSerializer, RolePermissionsSerializer, UserSerializer, role_permission_matrix,
 )
 
 
@@ -41,10 +41,10 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     permission_classes = [require("users.manage")]
 
     def get_queryset(self):
-        qs = User.objects.all()
+        qs = User.objects.prefetch_related("roles")
         p = self.request.query_params
         if p.get("role"):
-            qs = qs.filter(role=p["role"])
+            qs = qs.filter(roles__code=p["role"]).distinct()
         if p.get("active") in ("true", "false"):
             qs = qs.filter(is_active=p["active"] == "true")
         if p.get("q"):
@@ -53,23 +53,26 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
 
     def perform_create(self, serializer):
         user = serializer.save()
-        record("user.created", user, request=self.request, after={"username": user.username, "role": user.role})
+        record("user.created", user, request=self.request, after={"username": user.username, "roles": user.role_codes()})
 
     def perform_update(self, serializer):
-        before = {"role": serializer.instance.role, "is_active": serializer.instance.is_active,
+        before = {"roles": serializer.instance.role_codes(), "is_active": serializer.instance.is_active,
                   "full_name": serializer.instance.full_name}
         if serializer.instance.pk == self.request.user.pk and serializer.validated_data.get("is_active") is False:
             raise DomainError("cannot_deactivate_self")
-        if serializer.instance.role == Role.ADMIN and self.request.user.role != Role.ADMIN:
+        if serializer.instance.is_admin and not self.request.user.is_admin:
             raise DomainError("only_admin_can_edit_admin", http_status=403)
+        if (serializer.instance.pk == self.request.user.pk and "roles" in serializer.validated_data
+                and Role.ADMIN in before["roles"] and all(r.code != Role.ADMIN for r in serializer.validated_data["roles"])):
+            raise DomainError("cannot_remove_own_admin")
         user = serializer.save()
         record("user.updated", user, request=self.request, before=before,
-               after={"role": user.role, "is_active": user.is_active, "full_name": user.full_name})
+               after={"roles": user.role_codes(), "is_active": user.is_active, "full_name": user.full_name})
 
     @action(detail=True, methods=["post"], url_path="reset-password")
     def reset_password(self, request, pk=None):
         user = self.get_object()
-        if user.role == Role.ADMIN and request.user.role != Role.ADMIN:
+        if user.is_admin and not request.user.is_admin:
             raise DomainError("only_admin_can_edit_admin", http_status=403)
         s = ResetPasswordSerializer(data=request.data)
         s.is_valid(raise_exception=True)
@@ -86,7 +89,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
             scans_today=Count("check_events", filter=Q(check_events__kind="scan", check_events__client_at__gte=start)),
         )
         return Response([
-            {"id": u.pk, "username": u.username, "full_name": u.full_name, "role": u.role, "is_active": u.is_active,
+            {"id": u.pk, "username": u.username, "full_name": u.full_name, "roles": [r.code for r in u.roles.all()], "is_active": u.is_active,
              "last_login": u.last_login, "scans_today": u.scans_today}
             for u in qs
         ])
@@ -98,7 +101,7 @@ class CheckersView(APIView):
     permission_classes = [require("orders.view")]
 
     def get(self, request):
-        qs = User.objects.filter(role=Role.CHECKER, is_active=True).annotate(
+        qs = users_with_role_perm("checking.perform").annotate(
             active_orders=Count("assignments", filter=Q(assignments__revoked_at__isnull=True,
                                                         assignments__order__status__in=("assigned", "in_progress"))),
         ).order_by("full_name", "username")
@@ -117,9 +120,54 @@ class RolePermissionView(APIView):
     def put(self, request):
         s = RolePermissionsSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        role, perms = s.validated_data["role"], set(s.validated_data["permissions"])
+        role, perms = s.validated_data["role"].code, set(s.validated_data["permissions"])
         before = sorted(RolePermission.objects.filter(role=role).values_list("permission", flat=True))
         RolePermission.objects.filter(role=role).delete()
         RolePermission.objects.bulk_create(RolePermission(role=role, permission=p) for p in sorted(perms))
         record("permissions.changed", ("Role", role), request=request, before=before, after=sorted(perms))
         return Response(role_permission_matrix())
+
+
+class AppRoleViewSet(viewsets.ModelViewSet):
+    """Roles: list (for the user form and the permissions page), create, rename, delete.
+
+    Built-in roles cannot be deleted; a role still held by users cannot be deleted.
+    Permissions of a role are set through role-permissions/.
+    """
+
+    serializer_class = AppRoleSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [require_any("users.manage", "permissions.manage")()]
+        return [require("permissions.manage")()]
+
+    def get_queryset(self):
+        return AppRole.objects.annotate(n_users=Count("users", filter=Q(users__is_active=True)))
+
+    def perform_create(self, serializer):
+        from django.utils.text import slugify
+
+        base = slugify(serializer.validated_data.get("name_en") or "") or "role"
+        code, n = base[:30], 1
+        while AppRole.objects.filter(code=code).exists():
+            n += 1
+            code = f"{base[:30]}-{n}"
+        role = serializer.save(code=code, is_system=False)
+        record("role.created", role, request=self.request, after={"code": role.code, "name_fa": role.name_fa, "name_en": role.name_en})
+
+    def perform_update(self, serializer):
+        before = {"name_fa": serializer.instance.name_fa, "name_en": serializer.instance.name_en}
+        role = serializer.save()
+        record("role.updated", role, request=self.request, before=before, after={"name_fa": role.name_fa, "name_en": role.name_en})
+
+    def perform_destroy(self, instance):
+        if instance.is_system:
+            raise DomainError("role_is_builtin", "Built-in roles cannot be deleted")
+        n = instance.users.count()
+        if n:
+            raise DomainError("role_in_use", f"{n} users still have this role", data={"users": n})
+        RolePermission.objects.filter(role=instance.code).delete()
+        record("role.deleted", instance, request=self.request, before={"code": instance.code, "name_fa": instance.name_fa})
+        instance.delete()

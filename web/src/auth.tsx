@@ -2,6 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { ApiError, get, post, setUnauthorizedHandler, tokens } from "./api/client";
 import type { User } from "./api/types";
 
+/** Permissions that only make sense on the PDA. */
+const PDA_ONLY = ["checking.perform", "stocktake.perform"];
+
 interface Auth {
   user: User | null;
   ready: boolean;
@@ -26,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const d = await post<{ access: string; refresh: string; user: User }>("auth/login/", { username, password });
-    if (d.user.role === "checker" || d.user.role === "stocktaker") throw new ApiError(403, "checker_not_allowed");
+    if (d.user.permissions.every((p) => PDA_ONLY.includes(p))) throw new ApiError(403, "checker_not_allowed");
     tokens.set(d.access, d.refresh);
     setUser(d.user);
     return d.user;

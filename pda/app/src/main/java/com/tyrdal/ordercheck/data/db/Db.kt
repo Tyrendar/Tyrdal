@@ -2,6 +2,7 @@ package com.tyrdal.ordercheck.data.db
 
 import android.content.Context
 import androidx.room.AutoMigration
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -122,11 +123,17 @@ data class StockRecordEntity(
     val updatedAt: Long,
     val deleted: Boolean,
     val synced: Boolean,
+    /** The counter typed the title (not chosen from the master). */
+    @ColumnInfo(defaultValue = "0") val titleTyped: Boolean = false,
     /** Rejected by the server (e.g. stocktake closed); not retried until the task is open again. */
     val error: String?,
 )
 
 data class CodeTotal(val records: Int, val quantity: Int)
+
+/** Local copy of the stocktake master (barcode -> titles). Separate from the order-checking barcode cache. */
+@Entity(tableName = "stock_master", indices = [Index("code")])
+data class MasterEntity(@PrimaryKey val id: Long, val code: String, val title: String)
 
 @Dao
 interface StockDao {
@@ -158,6 +165,11 @@ interface StockDao {
     @Query("UPDATE stock_records SET error = :error WHERE id = :id") suspend fun setError(id: String, error: String)
     @Query("UPDATE stock_records SET error = :error WHERE taskId = :taskId AND synced = 0") suspend fun setErrorForTask(taskId: Long, error: String)
     @Query("UPDATE stock_records SET error = NULL WHERE taskId = :taskId AND synced = 0") suspend fun clearErrors(taskId: Long)
+
+    @Query("SELECT DISTINCT title FROM stock_master WHERE code = :code ORDER BY title") suspend fun masterTitles(code: String): List<String>
+    @Upsert suspend fun upsertMaster(m: List<MasterEntity>)
+    @Query("DELETE FROM stock_master WHERE id IN (:ids)") suspend fun deleteMaster(ids: List<Long>)
+    @Query("SELECT COUNT(*) FROM stock_master") fun masterCount(): Flow<Int>
 }
 
 @Dao
@@ -211,10 +223,10 @@ interface BarcodeDao {
 
 @Database(
     entities = [OrderEntity::class, LineEntity::class, DiscEntity::class, LineCodeEntity::class, PendingEntity::class,
-        OutboxEntity::class, BarcodeEntity::class, StockTaskEntity::class, StockRecordEntity::class],
-    version = 2,
+        OutboxEntity::class, BarcodeEntity::class, StockTaskEntity::class, StockRecordEntity::class, MasterEntity::class],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDb : RoomDatabase() {
     abstract fun orders(): OrderDao

@@ -13,26 +13,28 @@ from openpyxl.utils import get_column_letter
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.views import APIView
 
 from apps.accounts.errors import DomainError
-from apps.accounts.models import Role, RolePermission, User
+from apps.accounts.models import User, users_with_role_perm
 from apps.accounts.permissions import require
 from apps.audit.services import record
+from apps.catalog.normalize import canonical, clean
 from apps.checking.views import _device
 from apps.reports.services import TZ
 
 from . import services
-from .models import Stocktake, StockCount, StocktakeStatus, Vendor
+from . import master as master_svc
+from .models import MasterItem, MasterSource, Stocktake, StockCount, StocktakeStatus, Vendor
 
 PERFORM = "stocktake.perform"
 MANAGE = "stocktake.manage"
 
 
 def stocktakers():
-    """Active users whose role may count stock on the PDA (admins hold every permission but are not counters)."""
-    roles = set(RolePermission.objects.filter(permission=PERFORM).values_list("role", flat=True)) - {Role.ADMIN}
-    return User.objects.filter(is_active=True, role__in=roles)
+    """Active users with a role (other than admin) that may count stock on the PDA."""
+    return users_with_role_perm(PERFORM)
 
 
 # --- Panel ----------------------------------------------------------------------------
@@ -169,7 +171,7 @@ class StocktakeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
     @action(detail=True, methods=["get"])
     def records(self, request, pk=None):
         st = self.get_object()
-        qs = st.counts.select_related("user", "product").order_by("-counted_at")
+        qs = st.counts.select_related("user").order_by("-counted_at")
         p = request.query_params
         if p.get("deleted") != "true":
             qs = qs.filter(deleted=False)
@@ -177,11 +179,11 @@ class StocktakeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
             qs = qs.filter(user_id=int(p["counter"]))
         if p.get("q"):
             q = p["q"].strip()
-            qs = qs.filter(Q(barcode__icontains=q) | Q(code__icontains=q) | Q(product__title__icontains=q) | Q(product_id=q))
+            qs = qs.filter(Q(barcode__icontains=q) | Q(code__icontains=q) | Q(title__icontains=q))
         page = self.paginate_queryset(qs)
         return self.get_paginated_response([{
             "id": str(c.id), "user": c.user.display_name, "user_id": c.user_id, "barcode": c.barcode, "code": c.code,
-            "product_id": c.product_id, "title": c.product.title if c.product else None, "quantity": c.quantity,
+            "title": c.title or None, "title_typed": c.title_typed, "quantity": c.quantity,
             "price": c.price, "counted_at": c.counted_at, "deleted": c.deleted,
         } for c in page])
 
@@ -237,18 +239,19 @@ def _xlsx(wb: Workbook, filename: str) -> HttpResponse:
 
 
 def _wms_workbook(st: Stocktake) -> Workbook:
-    """Exactly the WMS upload format: one sheet, columns barcode, count, price; one row per barcode."""
+    """WMS upload format: one sheet, columns barcode, title, count, price; one row per barcode + title."""
     wb = Workbook()
     ws = wb.active
     ws.title = "stocktake"
-    ws.append(["barcode", "count", "price"])
+    ws.append(["barcode", "title", "count", "price"])
     for t in services.totals(st):
-        ws.append([t.barcode, t.quantity, _num(t.price)])
+        ws.append([t.barcode, t.title or None, t.quantity, _num(t.price)])
     for row in ws.iter_rows(min_row=2, max_col=1):
         row[0].number_format = "@"  # keep leading zeros / no scientific notation
     ws.column_dimensions["A"].width = 22
-    ws.column_dimensions["B"].width = 12
-    ws.column_dimensions["C"].width = 16
+    ws.column_dimensions["B"].width = 45
+    ws.column_dimensions["C"].width = 12
+    ws.column_dimensions["D"].width = 16
     return wb
 
 
@@ -289,10 +292,10 @@ def _detail_workbook(st: Stocktake, lang: str) -> Workbook:
         row[0].number_format = "@"
 
     ws2 = wb.create_sheet("Records")
-    counts = st.counts.filter(deleted=False).select_related("user", "product").order_by("user__username", "counted_at")
+    counts = st.counts.filter(deleted=False).select_related("user").order_by("user__username", "counted_at")
     _sheet(ws2, ["شمارنده", "زمان", "بارکد", "کالا", "تعداد", "قیمت"] if fa
            else ["Counter", "Time", "Barcode", "Product", "Count", "Price"],
-           [[c.user.display_name, _fmt_dt(c.counted_at, lang), c.barcode, c.product.title if c.product else None,
+           [[c.user.display_name, _fmt_dt(c.counted_at, lang), c.barcode, c.title or None,
              c.quantity, _num(c.price)] for c in counts.iterator(chunk_size=5000)],
            [18, 22, 20, 40, 10, 14], lang)
     for row in ws2.iter_rows(min_row=2, min_col=3, max_col=3):
@@ -341,7 +344,7 @@ class PdaStocktakeRecordsView(APIView):
         st = _my_stocktake(request, pk)
         qs = st.counts.filter(user=request.user, deleted=False).order_by("counted_at")
         return Response({"stocktake": _pda_brief(st, request.user), "records": [{
-            "id": str(c.id), "barcode": c.barcode, "quantity": c.quantity, "price": c.price,
+            "id": str(c.id), "barcode": c.barcode, "title": c.title, "title_typed": c.title_typed, "quantity": c.quantity, "price": c.price,
             "counted_at": c.counted_at, "updated_at": c.client_updated_at,
         } for c in qs]})
 
@@ -353,3 +356,147 @@ class PdaStocktakeRecordsView(APIView):
         out = services.upsert_counts(st, request.user, records, device=_device(request), sent_at=request.data.get("sent_at"))
         st.refresh_from_db()
         return Response({**out, "stocktake": _pda_brief(st, request.user)})
+
+
+# --- Stocktake master (barcode -> title), separate from the order catalog ----------
+def _master_dict(m: MasterItem) -> dict:
+    return {"id": m.pk, "barcode": m.barcode, "code": m.code, "title": m.title, "price": m.price, "source": m.source,
+            "created_by": m.created_by.display_name if m.created_by else None, "created_at": m.created_at, "updated_at": m.updated_at}
+
+
+def _audit(m: MasterItem) -> dict:
+    return {"barcode": m.barcode, "title": m.title, "price": str(m.price) if m.price is not None else None, "source": m.source}
+
+
+class MasterItemViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, mixins.DestroyModelMixin,
+                        viewsets.GenericViewSet):
+    """Panel: search, add, edit, delete (soft) master items; bulk import; export."""
+
+    permission_classes = [require(MANAGE)]
+
+    def get_queryset(self):
+        qs = MasterItem.objects.filter(deleted=False).select_related("created_by")
+        p = self.request.query_params
+        if p.get("source") in MasterSource.values:
+            qs = qs.filter(source=p["source"])
+        q = (p.get("q") or "").strip()
+        if q:
+            code = canonical(q)
+            qs = qs.filter(Q(code=code) | Q(barcode__startswith=clean(q)) | Q(title__icontains=q))
+        if p.get("multi") == "true":
+            multi = MasterItem.objects.filter(deleted=False).values("code").annotate(n=Count("id")).filter(n__gt=1).values("code")
+            qs = qs.filter(code__in=multi)
+        return qs.order_by("-updated_at", "id") if p.get("source") == MasterSource.COUNTER else qs.order_by("code", "title")
+
+    def list(self, request, *args, **kwargs):
+        page = self.paginate_queryset(self.get_queryset())
+        return self.get_paginated_response([_master_dict(m) for m in page])
+
+    def _clean(self, data, partial=False):
+        out = {}
+        if not partial or "barcode" in data:
+            barcode = clean(str(data.get("barcode") or ""))
+            if not barcode or len(barcode) > 64:
+                raise DomainError("invalid_barcode", "Barcode is required")
+            out["barcode"], out["code"] = barcode, canonical(barcode)
+        if not partial or "title" in data:
+            title = " ".join(str(data.get("title") or "").split())[:master_svc.MAX_TITLE]
+            if not title:
+                raise DomainError("title_required", "Title is required")
+            out["title"] = title
+        if "price" in data:
+            try:
+                out["price"] = services.parse_price(data.get("price"))
+            except ValueError:
+                raise DomainError("invalid_price", "Invalid price")
+        return out
+
+    def _check_unique(self, code, title, exclude=None):
+        qs = MasterItem.objects.filter(deleted=False, code=code, title=title)
+        if exclude:
+            qs = qs.exclude(pk=exclude)
+        if qs.exists():
+            raise DomainError("duplicate_item", "This barcode already has this title", http_status=409)
+
+    def create(self, request, *args, **kwargs):
+        v = self._clean(request.data)
+        self._check_unique(v["code"], v["title"])
+        m = MasterItem.objects.create(**v, source=MasterSource.MANUAL, created_by=request.user)
+        record("stocktake_master.created", m, request=request, after=_audit(m))
+        return Response(_master_dict(m), status=201)
+
+    def update(self, request, *args, **kwargs):
+        m = self.get_object()
+        before = _audit(m)
+        v = self._clean(request.data, partial=True)
+        self._check_unique(v.get("code", m.code), v.get("title", m.title), exclude=m.pk)
+        for k, val in v.items():
+            setattr(m, k, val)
+        m.save()
+        record("stocktake_master.updated", m, request=request, before=before, after=_audit(m))
+        return Response(_master_dict(m))
+
+    def destroy(self, request, *args, **kwargs):
+        m = self.get_object()
+        m.deleted = True
+        m.save(update_fields=["deleted", "updated_at"])
+        record("stocktake_master.deleted", m, request=request, before=_audit(m))
+        return Response(status=204)
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        live = MasterItem.objects.filter(deleted=False)
+        by_source = dict(live.values_list("source").annotate(n=Count("id")))
+        multi = live.values("code").annotate(n=Count("id")).filter(n__gt=1).count()
+        return Response({"items": live.count(), "barcodes": live.values("code").distinct().count(),
+                         "multi_title_barcodes": multi, "by_source": by_source})
+
+    @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser], url_path="import")
+    def import_file(self, request):
+        """multipart: file (.csv/.xlsx), mode=merge|replace, dry_run=true|false. Dry run first to preview."""
+        f = request.FILES.get("file")
+        if not f:
+            raise DomainError("file_required", "Choose a file")
+        mode = "replace" if request.data.get("mode") == "replace" else "merge"
+        dry_run = str(request.data.get("dry_run", "true")).lower() != "false"
+        plan = master_svc.parse(master_svc.read_rows(f.name, f.read()))
+        summary = master_svc.apply(plan, mode, request.user, dry_run=dry_run)
+        if not dry_run:
+            record("stocktake_master.imported", ("MasterItem", "import"), request=request, note=f.name,
+                   after={k: v for k, v in summary.items() if k != "error_rows"} | {"mode": mode})
+        return Response({**summary, "mode": mode, "dry_run": dry_run})
+
+    @action(detail=False, methods=["get"])
+    def export(self, request):
+        """The current master as .xlsx (barcode, title, price, source)."""
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet("master")
+        ws.append(["barcode", "title", "price", "source"])
+        for b, t, p, s in MasterItem.objects.filter(deleted=False).order_by("code", "title").values_list("barcode", "title", "price", "source").iterator(chunk_size=10000):
+            ws.append([b, t, _num(p), s])
+        return _xlsx(wb, f"stocktake_master_{timezone.localdate()}.xlsx")
+
+
+class PdaMasterView(APIView):
+    """Stocktake master for the PDA's local cache, as a change feed (like the barcode feed).
+
+    Without ?since: every live item. With ?since=<ISO time>: items changed after it, deletions
+    included (deleted=true). Paginated with ?after_id=.
+    """
+
+    permission_classes = [require(PERFORM)]
+    PAGE = 5000
+
+    def get(self, request):
+        from django.utils.dateparse import parse_datetime
+
+        since = parse_datetime(request.query_params.get("since") or "")
+        after_id = int(request.query_params.get("after_id") or 0)
+        server_time = timezone.now()
+        qs = MasterItem.objects.filter(pk__gt=after_id)
+        qs = qs.filter(updated_at__gt=since) if since else qs.filter(deleted=False)
+        rows = list(qs.order_by("pk").values_list("pk", "code", "title", "deleted")[: self.PAGE])
+        return Response({
+            "server_time": server_time, "has_more": len(rows) == self.PAGE, "next_after_id": rows[-1][0] if rows else after_id,
+            "items": [{"id": i, "code": c, "title": t, "deleted": d} for i, c, t, d in rows],
+        })

@@ -101,6 +101,7 @@ export async function download(path: string, fallbackName: string): Promise<void
 export const get = <T,>(path: string) => api<T>("GET", path);
 export const post = <T,>(path: string, body?: Body) => api<T>("POST", path, body);
 export const patch = <T,>(path: string, body?: Body) => api<T>("PATCH", path, body);
+export const del = <T,>(path: string) => api<T>("DELETE", path);
 export const put = <T,>(path: string, body?: Body) => api<T>("PUT", path, body);
 
 export function qs(params: Record<string, string | number | boolean | undefined | null>) {

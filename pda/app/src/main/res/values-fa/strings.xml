@@ -150,4 +150,11 @@
     <string name="st_orders">سفارش‌ها</string>
     <string name="st_err_closed">انبارگردانی بسته است</string>
     <string name="st_err_other">سرور نپذیرفت</string>
+    <string name="st_title">نام کالا</string>
+    <string name="st_need_title">نام کالا را بنویسید</string>
+    <string name="st_choose_title">این بارکد چند نام دارد؛ یکی را انتخاب کنید</string>
+    <string name="st_other_title">نام دیگر</string>
+    <string name="st_not_in_master">در فهرست نیست؛ نام کالا را بنویسید</string>
+    <string name="st_master_n">فهرست کالا روی دستگاه: %1$s قلم</string>
+    <string name="st_master_loading">در حال دریافت فهرست کالا…</string>
 </resources>

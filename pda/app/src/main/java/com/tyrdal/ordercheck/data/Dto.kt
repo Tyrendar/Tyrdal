@@ -171,6 +171,8 @@ data class StocktakeDto(
 data class StockRecordDto(
     val id: String,
     val barcode: String,
+    val title: String = "",
+    @SerialName("title_typed") val titleTyped: Boolean = false,
     val quantity: Int,
     /** Sent as text ("1200.5"); the server returns a number. */
     val price: kotlinx.serialization.json.JsonPrimitive? = null,
@@ -190,3 +192,14 @@ data class StockPushResponse(val accepted: List<String>, val rejected: List<Stoc
 
 @Serializable
 data class StockRecordsResponse(val stocktake: StocktakeDto, val records: List<StockRecordDto>)
+
+@Serializable
+data class MasterItemDto(val id: Long, val code: String, val title: String, val deleted: Boolean = false)
+
+@Serializable
+data class MasterResponse(
+    @SerialName("server_time") val serverTime: String,
+    @SerialName("has_more") val hasMore: Boolean,
+    @SerialName("next_after_id") val nextAfterId: Long,
+    val items: List<MasterItemDto>,
+)

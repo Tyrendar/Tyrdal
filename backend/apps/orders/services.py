@@ -6,7 +6,6 @@ from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from apps.accounts.errors import DomainError
-from apps.accounts.models import Role
 from apps.audit.services import record
 
 from .models import Assignment, LineState, Order, OrderStatus
@@ -47,7 +46,7 @@ def _lock(order_id: int) -> Order:
 
 
 def _check_checker(checker):
-    if checker.role != Role.CHECKER or not checker.is_active:
+    if not checker.is_active or not checker.has_role_perm("checking.perform"):
         raise DomainError("invalid_checker", "Target user is not an active checker")
 
 

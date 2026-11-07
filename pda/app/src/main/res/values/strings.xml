@@ -150,4 +150,11 @@
     <string name="st_orders">Orders</string>
     <string name="st_err_closed">stocktake closed</string>
     <string name="st_err_other">rejected by server</string>
+    <string name="st_title">Product title</string>
+    <string name="st_need_title">Type the product title</string>
+    <string name="st_choose_title">This barcode has several titles: choose one</string>
+    <string name="st_other_title">Other title</string>
+    <string name="st_not_in_master">Not in the list: type the title</string>
+    <string name="st_master_n">Product list on this device: %1$s items</string>
+    <string name="st_master_loading">Downloading the product list…</string>
 </resources>

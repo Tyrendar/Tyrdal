@@ -14,28 +14,30 @@ import java.util.UUID
 class StockStore(private val db: AppDb) {
     private val dao get() = db.stock()
 
-    data class Lookup(val barcode: String, val code: String, val title: String?, val total: CodeTotal)
+    /** `titles`: from the stocktake master (0 = not in the master, 2+ = the counter chooses). */
+    data class Lookup(val barcode: String, val code: String, val titles: List<String>, val total: CodeTotal)
 
     suspend fun lookup(taskId: Long, raw: String): Lookup? {
         val barcode = Barcode.clean(raw)
         if (barcode.isEmpty()) return null
         val code = Barcode.canonical(barcode)
-        return Lookup(barcode, code, db.barcodes().get(code)?.title, dao.totalFor(taskId, code))
+        return Lookup(barcode, code, dao.masterTitles(code), dao.totalFor(taskId, code))
     }
 
-    suspend fun add(taskId: Long, l: Lookup, quantity: Int, price: String?): StockRecordEntity {
+    suspend fun add(taskId: Long, l: Lookup, title: String, typed: Boolean, quantity: Int, price: String?): StockRecordEntity {
         val now = System.currentTimeMillis()
         val r = StockRecordEntity(
-            id = UUID.randomUUID().toString(), taskId = taskId, barcode = l.barcode, code = l.code, title = l.title,
+            id = UUID.randomUUID().toString(), taskId = taskId, barcode = l.barcode, code = l.code, title = title, titleTyped = typed,
             quantity = quantity, price = price, countedAt = now, updatedAt = now, deleted = false, synced = false, error = null,
         )
         dao.upsert(r)
         return r
     }
 
-    suspend fun edit(id: String, quantity: Int, price: String?) {
+    suspend fun edit(id: String, quantity: Int, price: String?, title: String) {
         val r = dao.get(id) ?: return
-        dao.upsert(r.copy(quantity = quantity, price = price, updatedAt = nextTime(r), synced = false, error = null))
+        val typed = r.titleTyped || title != (r.title ?: "")
+        dao.upsert(r.copy(quantity = quantity, price = price, title = title, titleTyped = typed, updatedAt = nextTime(r), synced = false, error = null))
     }
 
     suspend fun delete(id: String) {

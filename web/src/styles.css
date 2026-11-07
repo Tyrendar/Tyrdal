@@ -62,3 +62,12 @@ body {
 .oc-nowrap .ant-table-column-title { max-width: 9em; }
 .oc-clip { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .oc-row-deleted td { opacity: .5; text-decoration: line-through; }
+
+/* Header: the two main tabs (order checking / stocktaking) on one side, settings on the other. */
+.oc-header { background: #fff !important; padding-inline: 16px !important; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; border-bottom: 1px solid #e5e7eb; }
+.oc-main-tabs { padding: 3px; background: #eef2f1; }
+.oc-main-tabs .ant-segmented-item-selected { background: #0f766e; color: #fff; }
+.oc-main-tab { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; padding-inline: 6px; font-size: 14px; }
+
+.oc-perm-group td { background: #f1f5f9 !important; }

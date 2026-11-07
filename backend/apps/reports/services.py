@@ -29,7 +29,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
-from apps.accounts.models import Role, User
+from apps.accounts.models import User
 from apps.checking.engine import active_gaps, active_seconds_of
 from apps.checking.models import CheckEvent, Discrepancy, DiscrepancyStatus, EventKind, EventResult
 from apps.orders.models import Assignment, Order, OrderLine, OrderStatus

@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -92,7 +95,8 @@ import java.util.Locale
 
 /** Counting screen state. Every scan goes to this stocktake; the count is typed, then saved locally at once. */
 class StocktakeViewModel(private val app: App, val taskId: Long) : ViewModel() {
-    enum class Msg { SAVED, AUTO_SAVED, NEED_QTY, BAD_PRICE, CLOSED }
+    enum class Msg { SAVED, AUTO_SAVED, NEED_QTY, BAD_PRICE, CLOSED, NEED_TITLE, CHOOSE_TITLE }
+    enum class Focus { QTY, TITLE, NONE }
 
     val task = app.db.stock().task(taskId).stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val records = app.db.stock().records(taskId).stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -101,8 +105,16 @@ class StocktakeViewModel(private val app: App, val taskId: Long) : ViewModel() {
     var entry by mutableStateOf<StockStore.Lookup?>(null); private set
     var qty by mutableStateOf("")
     var price by mutableStateOf("")
-    /** Bumped on every new barcode so the screen moves focus to the count field. */
-    var entrySeq by mutableIntStateOf(0); private set
+    /** Title chosen from the stocktake master (several titles: the counter picks one). */
+    var chosenTitle by mutableStateOf<String?>(null); private set
+    /** Typing a title: the barcode is not in the master, or the counter chose "other title". */
+    var typing by mutableStateOf(false); private set
+    var typedTitle by mutableStateOf("")
+    /** Bumped whenever focus should move (new barcode, title chosen) to `focus`. */
+    var focusSeq by mutableIntStateOf(0); private set
+    var focus by mutableStateOf(Focus.QTY); private set
+
+    private fun focusOn(f: Focus) { focus = f; focusSeq++ }
     private val _msgs = Channel<Msg>(Channel.BUFFERED)
     val msgs = _msgs.receiveAsFlow()
     private val lock = Mutex()
@@ -131,24 +143,41 @@ class StocktakeViewModel(private val app: App, val taskId: Long) : ViewModel() {
         entry = l
         qty = ""
         price = ""
-        app.feedback.play(Outcome.COUNTED) // a barcode without a product name is normal: vendors define their own
-        entrySeq++
+        typedTitle = ""
+        chosenTitle = l.titles.singleOrNull()
+        typing = l.titles.isEmpty()
+        app.feedback.play(Outcome.COUNTED) // not being in the master is normal: vendors define their own barcodes
+        focusOn(when { l.titles.isEmpty() -> Focus.TITLE; l.titles.size == 1 -> Focus.QTY; else -> Focus.NONE })
+    }
+
+    fun chooseTitle(t: String) { chosenTitle = t; typing = false; focusOn(Focus.QTY) }
+
+    fun otherTitle() { chosenTitle = null; typing = true; focusOn(Focus.TITLE) }
+
+    /** Title field "Next": on to the count. */
+    fun titleDone() { focusOn(Focus.QTY)
     }
 
     fun save() { viewModelScope.launch { lock.withLock { saveLocked(auto = false) } } }
 
-    fun clear() { entry = null; qty = ""; price = "" }
+    fun clear() { entry = null; qty = ""; price = ""; typedTitle = ""; chosenTitle = null; typing = false }
 
     private suspend fun saveLocked(auto: Boolean): Boolean {
         val l = entry ?: return false
         if (!countable) { _msgs.send(Msg.CLOSED); return false }
+        val title = if (typing) typedTitle.trim().replace(Regex("\\s+"), " ") else chosenTitle
+        if (title.isNullOrEmpty()) {
+            app.feedback.play(Outcome.INVALID)
+            _msgs.send(if (typing) Msg.NEED_TITLE else Msg.CHOOSE_TITLE)
+            return false
+        }
         val q = StockInput.quantity(qty) ?: run { app.feedback.play(Outcome.INVALID); _msgs.send(Msg.NEED_QTY); return false }
         val p = when (val r = StockInput.price(price)) {
             StockInput.Price.Empty -> null
             StockInput.Price.Invalid -> { app.feedback.play(Outcome.INVALID); _msgs.send(Msg.BAD_PRICE); return false }
             is StockInput.Price.Value -> r.text
         }
-        app.stock.add(taskId, l, q, p)
+        app.stock.add(taskId, l, title, typing, q, p)
         app.feedback.play(Outcome.LINE_COMPLETE)
         clear()
         app.sync.trigger()
@@ -156,14 +185,16 @@ class StocktakeViewModel(private val app: App, val taskId: Long) : ViewModel() {
         return true
     }
 
-    fun edit(id: String, qtyText: String, priceText: String): Boolean {
+    fun edit(id: String, qtyText: String, priceText: String, titleText: String): Boolean {
+        val title = titleText.trim().replace(Regex("\\s+"), " ")
+        if (title.isEmpty()) return false
         val q = StockInput.quantity(qtyText) ?: return false
         val p = when (val r = StockInput.price(priceText)) {
             StockInput.Price.Empty -> null
             StockInput.Price.Invalid -> return false
             is StockInput.Price.Value -> r.text
         }
-        viewModelScope.launch { app.stock.edit(id, q, p); app.sync.trigger() }
+        viewModelScope.launch { app.stock.edit(id, q, p, title); app.sync.trigger() }
         return true
     }
 
@@ -195,6 +226,8 @@ fun StocktakeScreen(taskId: Long, onBack: () -> Unit) {
         StocktakeViewModel.Msg.NEED_QTY to stringResource(R.string.st_need_qty),
         StocktakeViewModel.Msg.BAD_PRICE to stringResource(R.string.st_bad_price),
         StocktakeViewModel.Msg.CLOSED to stringResource(R.string.st_closed),
+        StocktakeViewModel.Msg.NEED_TITLE to stringResource(R.string.st_need_title),
+        StocktakeViewModel.Msg.CHOOSE_TITLE to stringResource(R.string.st_choose_title),
     )
 
     LaunchedEffect(taskId) { app.scanner.scans.collect { vm.onScan(it) } }
@@ -254,7 +287,7 @@ fun StocktakeScreen(taskId: Long, onBack: () -> Unit) {
             }
         }
         if (manual) ManualBarcodeDialog(onDismiss = { manual = false }) { code -> manual = false; app.appScope.launch { vm.setBarcode(code) } }
-        editing?.let { r -> EditDialog(r, onDismiss = { editing = null }, onSave = { qt, pr -> vm.edit(r.id, qt, pr).also { if (it) editing = null } },
+        editing?.let { r -> EditDialog(r, onDismiss = { editing = null }, onSave = { qt, pr, ti -> vm.edit(r.id, qt, pr, ti).also { if (it) editing = null } },
             onDelete = { vm.delete(r.id); editing = null }) }
     }
 }
@@ -263,8 +296,13 @@ fun StocktakeScreen(taskId: Long, onBack: () -> Unit) {
 private fun EntryCard(vm: StocktakeViewModel, qtyFocus: FocusRequester, enabled: Boolean, onManual: () -> Unit) {
     val app = LocalContext.current.app
     val e = vm.entry
-    // After each scan the count field takes focus (once it is on screen), so the counter just types.
-    LaunchedEffect(vm.entrySeq) { if (vm.entry != null) { delay(60); runCatching { qtyFocus.requestFocus() } } }
+    val titleFocus = remember { FocusRequester() }
+    // After each scan focus moves to where the counter types next (title if unknown, else the count).
+    LaunchedEffect(vm.focusSeq) {
+        if (vm.entry == null || vm.focus == StocktakeViewModel.Focus.NONE) return@LaunchedEffect
+        delay(60)
+        runCatching { (if (vm.focus == StocktakeViewModel.Focus.TITLE) titleFocus else qtyFocus).requestFocus() }
+    }
     Card(Modifier.fillMaxWidth().padding(10.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (e == null) {
@@ -274,8 +312,8 @@ private fun EntryCard(vm: StocktakeViewModel, qtyFocus: FocusRequester, enabled:
                 }
                 return@Column
             }
-            e.title?.let { Text(it, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
             Text(ltr(e.barcode), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            TitlePicker(vm, e, titleFocus)
             if (e.total.records > 0) Text(stringResource(R.string.st_already, e.total.quantity, e.total.records), color = Palette.TealDark, style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NumberField(vm.qty, vm::onQtyChange, stringResource(R.string.st_quantity), KeyboardType.Number,
@@ -291,6 +329,32 @@ private fun EntryCard(vm: StocktakeViewModel, qtyFocus: FocusRequester, enabled:
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TitlePicker(vm: StocktakeViewModel, e: StockStore.Lookup, titleFocus: FocusRequester) {
+    val scanner = LocalContext.current.app.scanner
+    if (e.titles.size >= 2 && !vm.typing) Text(stringResource(R.string.st_choose_title), color = Palette.Warn, style = MaterialTheme.typography.bodyMedium)
+    if (e.titles.isNotEmpty()) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            e.titles.forEach { t ->
+                FilterChip(selected = !vm.typing && vm.chosenTitle == t, onClick = { vm.chooseTitle(t) },
+                    label = { Text(t, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp)) })
+            }
+            FilterChip(selected = vm.typing, onClick = vm::otherTitle,
+                label = { Text(stringResource(R.string.st_other_title), modifier = Modifier.padding(vertical = 8.dp)) })
+        }
+    }
+    if (vm.typing) {
+        if (e.titles.isEmpty()) Text(stringResource(R.string.st_not_in_master), color = Palette.Muted, style = MaterialTheme.typography.bodyMedium)
+        OutlinedTextField(
+            value = vm.typedTitle, onValueChange = { vm.typedTitle = it }, label = { Text(stringResource(R.string.st_title)) }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { vm.titleDone() }),
+            modifier = Modifier.fillMaxWidth().focusRequester(titleFocus).onFocusChanged { scanner.textInputActive = it.isFocused },
+        )
     }
 }
 
@@ -311,9 +375,9 @@ private fun RecordRow(r: StockRecordEntity, onClick: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(r.title ?: ltr(r.barcode), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(r.title?.takeIf { it.isNotBlank() } ?: ltr(r.barcode), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (r.title != null) Text(ltr(r.barcode), style = MaterialTheme.typography.bodySmall, color = Palette.Muted)
+                    if (!r.title.isNullOrBlank()) Text(ltr(r.barcode), style = MaterialTheme.typography.bodySmall, color = Palette.Muted)
                     Text(hhmm(r.countedAt), style = MaterialTheme.typography.bodySmall, color = Palette.Muted)
                     r.price?.let { Text(stringResource(R.string.st_price_n, formatPrice(it)), style = MaterialTheme.typography.bodySmall) }
                 }
@@ -330,24 +394,26 @@ private fun RecordRow(r: StockRecordEntity, onClick: () -> Unit) {
 }
 
 @Composable
-private fun EditDialog(r: StockRecordEntity, onDismiss: () -> Unit, onSave: (String, String) -> Unit, onDelete: () -> Unit) {
+private fun EditDialog(r: StockRecordEntity, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit, onDelete: () -> Unit) {
     val scanner = LocalContext.current.app.scanner
     var qty by remember { mutableStateOf(n(r.quantity)) }
     var price by remember { mutableStateOf(r.price ?: "") }
+    var title by remember { mutableStateOf(r.title ?: "") }
     var confirmDelete by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.st_edit)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                r.title?.let { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 Text(ltr(r.barcode), color = Palette.Muted)
-                NumberField(qty, { qty = it }, stringResource(R.string.st_quantity), KeyboardType.Number, Modifier.fillMaxWidth(), scanner) { onSave(qty, price) }
-                NumberField(price, { price = it }, stringResource(R.string.st_price), KeyboardType.Decimal, Modifier.fillMaxWidth(), scanner) { onSave(qty, price) }
+                OutlinedTextField(title, { title = it }, label = { Text(stringResource(R.string.st_title)) }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().onFocusChanged { scanner.textInputActive = it.isFocused })
+                NumberField(qty, { qty = it }, stringResource(R.string.st_quantity), KeyboardType.Number, Modifier.fillMaxWidth(), scanner) { onSave(qty, price, title) }
+                NumberField(price, { price = it }, stringResource(R.string.st_price), KeyboardType.Decimal, Modifier.fillMaxWidth(), scanner) { onSave(qty, price, title) }
                 TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.st_delete), color = Palette.Bad) }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(qty, price) }) { Text(stringResource(R.string.save)) } },
+        confirmButton = { TextButton(onClick = { onSave(qty, price, title) }) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
     if (confirmDelete) {

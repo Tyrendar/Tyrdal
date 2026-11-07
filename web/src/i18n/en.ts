@@ -1,10 +1,12 @@
 import type { Dict } from "./fa";
 
 const en: Dict = {
-  app: { title: "Order Checking System", short: "Order Checking" },
+  app: { title: "Order checking & stocktaking", short: "Warehouse ops" },
   menu: {
     dashboard: "Live board", orders: "Orders", imports: "Import orders", barcodes: "Barcodes", reasons: "Discrepancy reasons",
     users: "Users", permissions: "Permissions", audit: "Audit log", reports: "Reports", stocktakes: "Stocktaking",
+    checkingSection: "Order checking", stocktakingSection: "Stocktaking", system: "System",
+    stocktakeList: "Stocktakes", master: "Product list", vendors: "Vendors", stReports: "Stocktaking reports",
   },
   reports: {
     today: "Today", week: "This week", month: "This month", custom: "Custom", export: "Export to Excel",
@@ -121,12 +123,17 @@ const en: Dict = {
     defaults: { extra: "Extra box", not_in_order: "Item not in order" },
   },
   users: {
-    username: "Username", fullName: "Full name", role: "Role", lastLogin: "Last login", scansToday: "Scans today",
+    username: "Username", fullName: "Full name", role: "Role", roles: "Roles",
+    rolesHint: "A user can have several roles; permissions are the union of the roles' permissions.", lastLogin: "Last login", scansToday: "Scans today",
     new: "New user", resetPassword: "Reset password", newPassword: "New password", password: "Password", deactivate: "Deactivate",
     activate: "Activate",
   },
   permissions: {
-    title: "Role permissions", adminNote: "Admins always hold every permission.",
+    title: "Roles & permissions", multiNote: "Each user can have several roles and gets all their permissions. Create a role, tick its permissions, then give it to people under Users.",
+    newRole: "New role", nameFa: "Persian name", nameEn: "English name (optional)", deleteRole: "Delete this role?",
+    newRoleHint: "After creating it, tick its permissions in the table and save.", usersN: "{n} users",
+    groups: { checking: "Order checking", stocktaking: "Stocktaking", system: "System", other: "Other" },
+    adminNote: "Admins always hold every permission.",
     labels: {
       "users.manage": "Manage users", "permissions.manage": "Manage permissions", "reasons.manage": "Manage discrepancy reasons",
       "orders.view": "View orders", "orders.import": "Import orders", "orders.assign": "Assign orders",
@@ -134,6 +141,30 @@ const en: Dict = {
       "audit.view": "Audit log", "checking.perform": "Check orders on the PDA",
       "stocktake.manage": "Manage stocktaking and vendors", "stocktake.perform": "Count stock on the PDA",
     },
+  },
+  stReports: {
+    tabs: { overview: "Overview", counters: "Counters", vendors: "Vendors", stocktakes: "Stocktakes", newTitles: "Typed titles" },
+    allCounters: "All counters", openNow: "Open stocktakes", upcoming: "Upcoming", countingToday: "Counters active today",
+    titlesToReview: "Counter-typed titles in list", stocktakesPlanned: "Stocktakes in period", closed: "closed", records: "Records",
+    units: "Units counted", barcodes: "Barcodes", counters: "Counters", vendors: "Vendors", activeTime: "Active time",
+    recordsPerHour: "Records per hour", unitsPerHour: "Units per hour", typedTitles: "Typed titles", withPrice: "Records with price",
+    value: "Value (count × price)", stocktakes: "Stocktakes", edited: "Edited", deleted: "Deleted", firstAt: "First record",
+    lastAt: "Last record", elapsed: "Elapsed", closedAt: "Closed", typedTitle: "Typed title", otherTitles: "Other titles of this barcode in the list",
+    hint: "Volumes count records made in the period; active time = gaps between a counter's records, excluding gaps over 5 minutes.",
+    newTitlesHint: "Barcodes that were not in the product list and the counter typed a title; for review. Fix or delete in Product list.",
+  },
+  master: {
+    tab: "Product list", hint: "Stocktaking barcode -> product title list; separate from the order-checking barcode mapping. A barcode may have several titles; the counter chooses one.",
+    items: "Rows", barcodes: "Barcodes", multiTitle: "Barcodes with several titles", import: "Import file", add: "Add item", export: "Export list",
+    search: "Barcode or title", sourceLabel: "Source", onlyMulti: "Only barcodes with several titles", barcode: "Barcode", title: "Title",
+    by: "Added by", updated: "Last change", deleteConfirm: "Delete this row from the list?", typed: "Typed",
+    source: { import: "File", manual: "Panel", counter: "Counter" },
+    dragHint: "Drop a CSV or Excel file here, or click", columnsHint: "Columns: barcode, title (price optional)",
+    merge: "Add and update", mergeHint: "New rows are added; nothing is removed.",
+    replace: "Replace", replaceHint: "Rows that came from earlier files and are not in this file are removed; panel and counter rows are kept.",
+    preview: "Preview", apply: "Import", imported: "Product list updated", rows: "File rows", new: "New", updatedN: "Updated", unchanged: "Unchanged",
+    removed: "Removed", duplicateRows: "Duplicate rows", row: "Row", errorRows: "{n} rows skipped",
+    errors: { invalid_barcode: "no barcode", title_required: "no title", invalid_price: "invalid price" } as Record<string, string>,
   },
   stocktake: {
     list: "Stocktakes", vendors: "Vendors", new: "New stocktake", vendor: "Vendor", date: "Date",
@@ -154,7 +185,7 @@ const en: Dict = {
     network_error: "Cannot reach the server", permission_denied: "You do not have permission", not_authenticated: "Please sign in",
     already_assigned: "This order already has an active checker; use Reassign", same_checker: "Already assigned to this checker",
     invalid_checker: "Selected user is not an active checker", order_locked: "The order is closed", not_assigned: "The order has no active checker",
-    note_required: "A note is required", stocktake_closed: "The stocktake is closed", stocktake_open: "The stocktake is open",
+    note_required: "A note is required", role_in_use: "Users still have this role; remove it from them first", role_is_builtin: "Built-in roles cannot be deleted", cannot_remove_own_admin: "You cannot remove the admin role from yourself", duplicate_item: "This barcode already has this title", missing_columns: "Barcode or title column not found", title_required: "Title is required", stocktake_closed: "The stocktake is closed", stocktake_open: "The stocktake is open",
     invalid_counter: "The selected user is not an active stocktaker", stocktake_not_started: "The stocktake has not started yet", not_completed: "Only completed orders can be reopened",
     duplicate_file: "This file was already imported", unsupported_file_type: "Only .xlsx files are accepted",
     file_required: "No file selected", batch_not_committable: "This upload cannot be committed",

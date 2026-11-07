@@ -6,7 +6,6 @@ import openpyxl
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from apps.catalog.models import Barcode, Product
 from apps.testing import make_user
 
 from .models import StockCount, Stocktake, Vendor
@@ -14,10 +13,10 @@ from .models import StockCount, Stocktake, Vendor
 B1, B2 = "6260108396830", "012345678905"  # EAN-13; UPC-A (scans as 12 digits, same as 0012345678905)
 
 
-def rec(barcode, qty, price=None, *, rid=None, at=None, updated=None, deleted=False):
+def rec(barcode, qty, price=None, *, rid=None, at=None, updated=None, deleted=False, title="", typed=False):
     at = at or timezone.now() - timedelta(minutes=5)
-    return {"id": rid or str(uuid.uuid4()), "barcode": barcode, "quantity": qty, "price": price,
-            "counted_at": at.isoformat(), "updated_at": (updated or at).isoformat(), "deleted": deleted}
+    return {"id": rid or str(uuid.uuid4()), "barcode": barcode, "quantity": qty, "price": price, "title": title,
+            "title_typed": typed, "counted_at": at.isoformat(), "updated_at": (updated or at).isoformat(), "deleted": deleted}
 
 
 class StocktakeFlow(APITestCase):
@@ -27,8 +26,6 @@ class StocktakeFlow(APITestCase):
         cls.c1, cls.c2 = make_user("s1", "stocktaker"), make_user("s2", "stocktaker")
         cls.checker = make_user("chk", "checker")
         cls.vendor = Vendor.objects.create(name="Vendor A")
-        p = Product.objects.create(id="P1", title="Tea 500g")
-        Barcode.objects.create(code="06260108396830", raw=B1, product=p, source="manual")
 
     def setUp(self):
         self.client.force_authenticate(self.sup)
@@ -54,8 +51,9 @@ class StocktakeFlow(APITestCase):
         self.assertEqual(self.client.get("/api/pda/stocktakes/").status_code, 403)
 
     def test_same_barcode_many_times_is_summed(self):
-        self.push(self.c1, [rec(B1, 10, 25000), rec(B1, 4), rec(B2, 7, "1200.50"), rec(B2, 0)])
-        self.push(self.c2, [rec(" " + B1, 6, 26000), rec("0" + B2, 3)])  # same UPC read with a leading zero
+        tea = "Tea 500g"
+        self.push(self.c1, [rec(B1, 10, 25000, title=tea), rec(B1, 4, title=tea), rec(B2, 7, "1200.50"), rec(B2, 0)])
+        self.push(self.c2, [rec(" " + B1, 6, 26000, title=tea), rec("0" + B2, 3)])  # same UPC read with a leading zero
         self.client.force_authenticate(self.sup)
         tot = {r["code"]: r for r in self.client.get(f"/api/stocktakes/{self.st.pk}/totals/").data}
         t1 = tot["06260108396830"]
@@ -71,8 +69,8 @@ class StocktakeFlow(APITestCase):
         r = self.client.get(f"/api/stocktakes/{self.st.pk}/export/?kind=wms")
         ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
         rows = list(ws.iter_rows(values_only=True))
-        self.assertEqual(rows[0], ("barcode", "count", "price"))
-        self.assertEqual(sorted(rows[1:]), [(B2, 7, None), (B1, 15, 25000)])
+        self.assertEqual(rows[0], ("barcode", "title", "count", "price"))
+        self.assertEqual(sorted(rows[1:]), [(B2, None, 7, None), (B1, None, 15, 25000)])
         self.assertIsInstance(rows[1][0], str)  # text, so leading zeros survive
         detail = self.client.get(f"/api/stocktakes/{self.st.pk}/export/?kind=detail&lang=fa")
         wb = openpyxl.load_workbook(io.BytesIO(detail.content))

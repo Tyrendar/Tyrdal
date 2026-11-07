@@ -37,7 +37,7 @@ export default function StocktakeDetailPage() {
     <>
       <div className="oc-page-header">
         <Space align="center">
-          <Button type="text" icon={dir === "rtl" ? <ArrowRightOutlined /> : <ArrowLeftOutlined />} onClick={() => nav("/stocktakes")} />
+          <Button type="text" icon={dir === "rtl" ? <ArrowRightOutlined /> : <ArrowLeftOutlined />} onClick={() => nav("/stocktaking")} />
           <h2>{s.vendor.name}</h2>
           <StatusTag status={s.status} />
           {s.status === "open" && (s.countable ? <Tag color="green">{t("stocktake.countable")}</Tag> : <Tag>{t("stocktake.notStarted")}</Tag>)}
@@ -123,11 +123,11 @@ function Totals({ id }: { id: string }) {
         <Space><Switch checked={conflicts} onChange={setConflicts} /> {t("stocktake.onlyConflicts")}</Space>
       </div>
       <Table<StockTotal>
-        className="oc-nowrap" rowKey="code" size="small" loading={r.isLoading} dataSource={r.data ?? []} tableLayout="auto" scroll={{ x: "max-content" }}
+        className="oc-nowrap" rowKey="key" size="small" loading={r.isLoading} dataSource={r.data ?? []} tableLayout="auto" scroll={{ x: "max-content" }}
         pagination={{ pageSize: 100, showSizeChanger: false, showTotal: (n) => `${t("common.total")}: ${num(n)}` }}
         columns={[
           { title: "barcode", dataIndex: "barcode", render: (v) => <Ltr>{v}</Ltr> },
-          { title: t("stocktake.product"), dataIndex: "title", render: (v) => (v ? <span className="oc-clip" title={v}>{v}</span> : t("common.none")) },
+          { title: "title", dataIndex: "title", render: (v) => (v ? <span className="oc-clip" title={v}>{v}</span> : t("common.none")) },
           { title: "count", dataIndex: "quantity", sorter: (a, b) => a.quantity - b.quantity, render: (v) => <b>{num(v)}</b> },
           { title: "price", dataIndex: "price", render: (v, x) => <>{money(v, lang, t("common.none"))}{x.price_conflict && <Tag color="gold" style={{ marginInlineStart: 6 }}>{t("stocktake.priceConflict")}</Tag>}</> },
           { title: t("stocktake.records"), dataIndex: "records", sorter: (a, b) => a.records - b.records, render: num },
@@ -163,7 +163,7 @@ function Records({ id, counters }: { id: string; counters: StocktakeDetail["by_c
           { title: t("stocktake.time"), dataIndex: "counted_at", render: dateTime },
           { title: t("stocktake.counter"), dataIndex: "user" },
           { title: "barcode", dataIndex: "barcode", render: (v) => <Ltr>{v}</Ltr> },
-          { title: t("stocktake.product"), dataIndex: "title", render: (v) => (v ? <span className="oc-clip" title={v}>{v}</span> : t("common.none")) },
+          { title: "title", dataIndex: "title", render: (v, x) => <>{v ? <span className="oc-clip" title={v}>{v}</span> : t("common.none")}{x.title_typed && <Tag color="orange" style={{ marginInlineStart: 6 }}>{t("master.typed")}</Tag>}</> },
           { title: "count", dataIndex: "quantity", render: (v) => <b>{num(v)}</b> },
           { title: "price", dataIndex: "price", render: (v) => money(v, lang, t("common.none")) },
           { title: "", dataIndex: "deleted", render: (v) => (v ? <Tag>{t("stocktake.deleted")}</Tag> : null) },

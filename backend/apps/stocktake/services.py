@@ -13,7 +13,6 @@ from django.utils.dateparse import parse_datetime
 from apps.accounts.errors import DomainError
 from apps.accounts.models import User
 from apps.audit.services import record
-from apps.catalog.models import Barcode
 from apps.catalog.normalize import canonical, clean
 
 from .models import Stocktake, StockCount, StocktakeStatus
@@ -45,11 +44,6 @@ def parse_price(v) -> Decimal | None:
     if not p.is_finite() or p < 0 or p > MAX_PRICE or p != p.quantize(Decimal("0.01")):
         raise ValueError("invalid_price")
     return p
-
-
-def _product_of(code: str):
-    b = Barcode.objects.filter(code=code, is_active=True).select_related("product").order_by("is_derived", "pk").first()
-    return b.product if b else None
 
 
 @transaction.atomic
@@ -96,6 +90,8 @@ def upsert_counts(st: Stocktake, user, records: list[dict], *, device=None, sent
             rejected.append({"id": rid, "error": str(e)})
             continue
         counted_at, updated_at = min(counted_at + skew, now), min(updated_at + skew, now)
+        title = " ".join(str(r.get("title") or "").split())[:300]
+        title_typed = bool(r.get("title_typed")) and bool(title)
 
         existing = StockCount.objects.select_for_update().filter(pk=rid).first()
         if existing and (existing.stocktake_id != st.pk or existing.user_id != user.pk):
@@ -105,7 +101,7 @@ def upsert_counts(st: Stocktake, user, records: list[dict], *, device=None, sent
             accepted.append(rid)  # this version or a newer one is already stored
             continue
         code = canonical(barcode)
-        fields = dict(barcode=barcode, code=code, product=_product_of(code), quantity=qty, price=price,
+        fields = dict(barcode=barcode, code=code, title=title, title_typed=title_typed, quantity=qty, price=price,
                       client_updated_at=updated_at, deleted=bool(r.get("deleted")), device=device)
         if existing:
             for k, v in fields.items():
@@ -113,6 +109,10 @@ def upsert_counts(st: Stocktake, user, records: list[dict], *, device=None, sent
             existing.save()
         else:
             StockCount.objects.create(id=rid, stocktake=st, user=user, counted_at=counted_at, **fields)
+        if title_typed and not fields["deleted"]:
+            from .master import ensure_counter_title  # noqa: PLC0415 (master imports this module)
+
+            ensure_counter_title(barcode, title, user)
         accepted.append(rid)
     return {"accepted": accepted, "rejected": rejected}
 
@@ -121,6 +121,7 @@ def upsert_counts(st: Stocktake, user, records: list[dict], *, device=None, sent
 @dataclass
 class BarcodeTotal:
     code: str
+    title: str = ""
     barcode: str = ""
     title: str = ""
     quantity: int = 0
@@ -131,32 +132,32 @@ class BarcodeTotal:
     forms: Counter = field(default_factory=Counter)
 
     def as_dict(self) -> dict:
-        return {"code": self.code, "barcode": self.barcode, "title": self.title, "quantity": self.quantity,
+        return {"key": f"{self.code}|{self.title}", "code": self.code, "barcode": self.barcode, "title": self.title, "quantity": self.quantity,
                 "records": self.records, "counters": len(self.counters), "price": self.price,
                 "price_conflict": len(self.prices) > 1}
 
 
 def totals(st: Stocktake) -> list[BarcodeTotal]:
-    """Per barcode: summed quantity; the barcode as it was scanned most often; the price
+    """Per barcode + title (a barcode shared by two products is counted under the title the
+    counter chose): summed quantity; the barcode as it was scanned most often; the price
     entered last (records without a price are ignored); price_conflict when records
     disagree on the price."""
-    out: dict[str, BarcodeTotal] = {}
+    out: dict[tuple, BarcodeTotal] = {}
     rows = (st.counts.filter(deleted=False).order_by("counted_at")
-            .values_list("code", "barcode", "quantity", "price", "user_id", "product__title"))
+            .values_list("code", "barcode", "quantity", "price", "user_id", "title"))
     for code, barcode, qty, price, uid, title in rows.iterator(chunk_size=5000):
-        t = out.setdefault(code, BarcodeTotal(code))
+        t = out.setdefault((code, title), BarcodeTotal(code, title))
         t.quantity += qty
         t.records += 1
         t.counters.add(uid)
         t.forms[barcode] += 1
-        t.title = title or t.title
         if price is not None:
             t.price = price
             t.prices.add(price)
     for t in out.values():
         best = max(t.forms.values())
         t.barcode = [b for b, n in t.forms.items() if n == best][-1]
-    return sorted(out.values(), key=lambda t: t.barcode)
+    return sorted(out.values(), key=lambda t: (t.barcode, t.title))
 
 
 def counter_summary(st: Stocktake) -> list[dict]:

@@ -59,7 +59,7 @@ class AuthAndPermissionTests(ApiTestBase):
         self.login("sup")
         self.assertEqual(self.client.get("/api/users/").status_code, 403)
         self.login("admin")
-        r = self.client.post("/api/users/", {"username": "c3", "password": "1234", "role": "checker", "full_name": "C3"}, format="json")
+        r = self.client.post("/api/users/", {"username": "c3", "password": "1234", "roles": ["checker"], "full_name": "C3"}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
         r = self.client.post(f"/api/users/{r.data['id']}/reset-password/", {"password": "5678"}, format="json")
         self.assertEqual(r.status_code, 200)

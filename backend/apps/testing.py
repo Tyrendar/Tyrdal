@@ -52,9 +52,12 @@ def upload(rows, name="orders.xlsx", headers=None) -> SimpleUploadedFile:
 
 
 def make_user(username, role="checker", password="pass1234"):
-    from apps.accounts.models import User
+    """`role`: a role code or a list of codes."""
+    from apps.accounts.models import AppRole, User
 
-    u = User.objects.create_user(username=username, password=password, role=role, full_name=username.title())
+    u = User.objects.create_user(username=username, password=password, full_name=username.title())
+    for code in ([role] if isinstance(role, str) else role):
+        u.roles.add(AppRole.objects.get(code=code))
     return u
 
 

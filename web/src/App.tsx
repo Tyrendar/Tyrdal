@@ -18,6 +18,7 @@ import PermissionsPage from "./pages/PermissionsPage";
 import ReasonsPage from "./pages/ReasonsPage";
 import ReportsPage from "./pages/ReportsPage";
 import StocktakeDetailPage from "./pages/StocktakeDetailPage";
+import StocktakeReportsPage from "./pages/StocktakeReportsPage";
 import StocktakesPage from "./pages/StocktakesPage";
 import UsersPage from "./pages/UsersPage";
 
@@ -40,7 +41,7 @@ export default function App() {
   if (!ready) return <div style={{ display: "grid", placeItems: "center", height: "100%" }}><Spin size="large" /></div>;
   if (!user) return <LoginPage />;
 
-  const home = can("orders.view") ? "/dashboard" : can("stocktake.manage") ? "/stocktakes" : can("users.manage") ? "/users" : "/barcodes";
+  const home = can("orders.view") ? "/dashboard" : can("stocktake.manage") ? "/stocktaking" : can("users.manage") ? "/users" : "/barcodes";
   return (
     <AppLayout>
       <ReasonsCache />
@@ -52,8 +53,12 @@ export default function App() {
         {(can("orders.import") || can("barcodes.manage")) && <Route path="/imports" element={<ImportsPage />} />}
         {(can("orders.import") || can("barcodes.manage")) && <Route path="/imports/:id" element={<ImportDetailPage />} />}
         {can("reports.view") && <Route path="/reports" element={<ReportsPage />} />}
-        {can("stocktake.manage") && <Route path="/stocktakes" element={<StocktakesPage />} />}
-        {can("stocktake.manage") && <Route path="/stocktakes/:id" element={<StocktakeDetailPage />} />}
+        {can("stocktake.manage") && <Route path="/stocktaking" element={<StocktakesPage view="list" />} />}
+        {can("stocktake.manage") && <Route path="/stocktaking/master" element={<StocktakesPage view="master" />} />}
+        {can("stocktake.manage") && <Route path="/stocktaking/vendors" element={<StocktakesPage view="vendors" />} />}
+        {can("stocktake.manage") && <Route path="/stocktaking/reports" element={<StocktakeReportsPage />} />}
+        {can("stocktake.manage") && <Route path="/stocktaking/:id" element={<StocktakeDetailPage />} />}
+        <Route path="/stocktakes/*" element={<Navigate to="/stocktaking" replace />} />
         <Route path="/barcodes" element={<BarcodesPage />} />
         <Route path="/reasons" element={<ReasonsPage />} />
         {can("users.manage") && <Route path="/users" element={<UsersPage />} />}

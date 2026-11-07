@@ -3,7 +3,10 @@ from django.db.models.signals import post_migrate
 
 
 def seed_role_permissions(sender, **kwargs):
-    from .models import DEFAULT_ROLE_PERMISSIONS, RolePermission
+    from .models import BUILTIN_ROLE_NAMES, DEFAULT_ROLE_PERMISSIONS, AppRole, RolePermission
+
+    for code, (fa, en) in BUILTIN_ROLE_NAMES.items():
+        AppRole.objects.get_or_create(code=code, defaults={"name_fa": fa, "name_en": en, "is_system": True})
 
     if RolePermission.objects.exists():
         return

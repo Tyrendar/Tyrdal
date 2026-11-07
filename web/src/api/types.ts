@@ -1,10 +1,12 @@
-export type Role = "admin" | "supervisor" | "checker" | "stocktaker";
+/** Role code: built-in ("admin", "supervisor", "checker", "stocktaker") or created in the panel. */
+export type Role = string;
 export type OrderStatus = "pending_assignment" | "assigned" | "in_progress" | "completed" | "cancelled";
 export type LineState = "pending" | "partial" | "ok" | "short" | "extra";
 export type Tab = "to_check" | "ok" | "issue";
 
 export interface User {
-  id: number; username: string; full_name: string; role: Role; language: "fa" | "en";
+  id: number; username: string; full_name: string; roles: Role[]; role: Role; language: "fa" | "en";
+  role_names: { code: string; name_fa: string; name_en: string }[];
   is_active: boolean; last_login: string | null; date_joined: string; permissions: string[];
 }
 
@@ -143,6 +145,7 @@ export interface OperationsRow {
 }
 
 export interface PermissionMatrix { permissions: Record<string, string>; roles: Record<Role, string[]> }
+export interface AppRole { id: number; code: string; name_fa: string; name_en: string; is_system: boolean; permissions: string[]; users: number }
 
 // --- Stocktaking ---------------------------------------------------------------------
 export interface Vendor { id: number; name: string; code: string; is_active: boolean; created_at: string; stocktakes_count?: number }
@@ -158,8 +161,19 @@ export interface StocktakeDetail extends StocktakeBrief {
   by_counter: { user_id: number; name: string; username: string; assigned: boolean; records: number; quantity: number; barcodes: number; last_at: string | null }[];
   totals: { barcodes: number; quantity: number; records: number; price_conflicts: number; without_price: number };
 }
-export interface StockTotal { code: string; barcode: string; title: string; quantity: number; records: number; counters: number; price: string | null; price_conflict: boolean }
+export interface StockTotal { key: string; code: string; barcode: string; title: string; quantity: number; records: number; counters: number; price: string | null; price_conflict: boolean }
 export interface StockRecord {
-  id: string; user: string; user_id: number; barcode: string; code: string; product_id: string | null; title: string | null;
+  id: string; user: string; user_id: number; barcode: string; code: string; title: string | null; title_typed: boolean;
   quantity: number; price: string | null; counted_at: string; deleted: boolean;
+}
+
+export interface MasterItem {
+  id: number; barcode: string; code: string; title: string; price: string | null; source: "import" | "manual" | "counter";
+  created_by: string | null; created_at: string; updated_at: string;
+}
+export interface MasterStats { items: number; barcodes: number; multi_title_barcodes: number; by_source: Partial<Record<MasterItem["source"], number>> }
+export interface MasterImportResult {
+  rows: number; items: number; new: number; updated: number; unchanged: number; removed: number; duplicate_rows: number;
+  errors: number; error_rows: { row: number; code: string; barcode?: string }[]; barcodes_with_several_titles: number;
+  mode: "merge" | "replace"; dry_run: boolean;
 }

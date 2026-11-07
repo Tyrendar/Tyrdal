@@ -10,6 +10,7 @@ import com.tyrdal.ordercheck.data.Prefs
 import com.tyrdal.ordercheck.data.StockPushRequest
 import com.tyrdal.ordercheck.data.StockRecordDto
 import com.tyrdal.ordercheck.data.StocktakeDto
+import com.tyrdal.ordercheck.data.db.MasterEntity
 import com.tyrdal.ordercheck.data.db.StockRecordEntity
 import com.tyrdal.ordercheck.data.db.StockTaskEntity
 import com.tyrdal.ordercheck.data.db.AppDb
@@ -66,10 +67,12 @@ class SyncManager(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val pushLock = Mutex()
     private val stockLock = Mutex()
+    private val masterLock = Mutex()
     private var lastStock = 0L
     private var job: Job? = null
     private var lastOrders = 0L
     private var lastBarcodes = 0L
+    private var lastMaster = 0L
 
     fun start() {
         if (job?.isActive == true) return
@@ -93,7 +96,9 @@ class SyncManager(
         val now = System.currentTimeMillis()
         if ("checking.perform" in p && now - lastOrders > 30_000) { refreshOrders(); lastOrders = now }
         if ("stocktake.perform" in p && now - lastStock > 30_000) { refreshStocktakes(); lastStock = now }
-        if (now - lastBarcodes > 5 * 60_000) { if (syncBarcodes()) lastBarcodes = now }
+        // Order checking uses the product catalog; stocktaking has its own master list.
+        if ("checking.perform" in p && now - lastBarcodes > 5 * 60_000) { if (syncBarcodes()) lastBarcodes = now }
+        if ("stocktake.perform" in p && now - lastMaster > 2 * 60_000) { if (syncStockMaster()) lastMaster = now }
     }
 
     private suspend inline fun <T> net(block: () -> T): T? = try {
@@ -219,12 +224,34 @@ class SyncManager(
         db.stock().insertIfAbsent(r.records.map { d ->
             val code = com.tyrdal.ordercheck.domain.Barcode.canonical(d.barcode)
             StockRecordEntity(
-                id = d.id, taskId = taskId, barcode = d.barcode, code = code, title = db.barcodes().get(code)?.title,
+                id = d.id, taskId = taskId, barcode = d.barcode, code = code, title = d.title.ifBlank { null }, titleTyped = d.titleTyped,
                 quantity = d.quantity,
                 price = d.price?.contentOrNull?.let { runCatching { BigDecimal(it).stripTrailingZeros().toPlainString() }.getOrNull() },
                 countedAt = millis(d.countedAt), updatedAt = millis(d.updatedAt), deleted = false, synced = true, error = null,
             )
         })
+    }
+
+    /** Stocktake master to the local cache (everything the first time, then changes and deletions only). */
+    suspend fun syncStockMaster(): Boolean = masterLock.withLock { syncStockMasterLocked() }
+
+    private suspend fun syncStockMasterLocked(): Boolean {
+        val since = prefs.stockMasterSince
+        var afterId = 0L
+        var serverTime: String? = null
+        val dao = db.stock()
+        while (true) {
+            val page = net { api.stockMaster(since, afterId) } ?: return false
+            serverTime = serverTime ?: page.serverTime
+            val (gone, live) = page.items.partition { it.deleted }
+            dao.upsertMaster(live.map { MasterEntity(it.id, it.code, it.title) })
+            gone.map { it.id }.chunked(500).forEach { dao.deleteMaster(it) }
+            if (!page.hasMore) break
+            afterId = page.nextAfterId
+            delay(10)
+        }
+        prefs.stockMasterSince = serverTime
+        return true
     }
 
     /** Central barcode mapping → local cache (full on first run, then changes only). */
@@ -259,7 +286,7 @@ fun ReasonDto.toDomain() = Reason(id, code, nameFa, nameEn, appliesTo, requiresN
 fun StocktakeDto.toEntity() = StockTaskEntity(id, vendor, vendorCode, date, status, note, countable, myRecords, active = true)
 
 private fun StockRecordEntity.toDto() = StockRecordDto(
-    id = id, barcode = barcode, quantity = quantity, price = price?.let { JsonPrimitive(it) },
+    id = id, barcode = barcode, title = title ?: "", titleTyped = titleTyped, quantity = quantity, price = price?.let { JsonPrimitive(it) },
     countedAt = Instant.ofEpochMilli(countedAt).toString(), updatedAt = Instant.ofEpochMilli(updatedAt).toString(), deleted = deleted,
 )
 
