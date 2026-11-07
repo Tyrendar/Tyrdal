@@ -41,6 +41,22 @@ C = {
         ("short_stock_boxes", "کسری (موجودی) - کارتن", "Short, stock – boxes", "int"),
         ("extra_boxes", "کارتن اضافه", "Extra boxes", "int"), ("not_in_order_boxes", "کارتن خارج از سفارش", "Not-in-order boxes", "int"),
         ("error_boxes", "کارتن خطا", "Error boxes", "int"), ("error_rate_pct", "درصد خطا", "Error rate %", "num"),
+        ("pick_orders", "سفارش با داده جمع‌آوری", "Orders with picking data", "int"),
+        ("boxes_picked", "کارتن جمع‌آوری‌شده (ثبت جمع‌آور)", "Boxes picked (picker's record)", "int"),
+        ("pick_short_boxes", "کسری اعلام‌شده توسط جمع‌آور", "Shortage declared by picker", "int"),
+        ("missing_boxes", "ثبت‌شده ولی روی پالت نبود", "Recorded but not on pallet", "int"),
+        ("unrecorded_boxes", "روی پالت بود ولی ثبت نشده", "On pallet but not recorded", "int"),
+        ("pick_mismatch_lines", "قلم مغایر با جمع‌آوری", "Lines picked ≠ checked", "int"),
+        ("pick_accuracy_pct", "دقت ثبت جمع‌آوری ٪", "Picking record accuracy %", "num"),
+    ],
+    "picking": [
+        ("reference_id", "شماره سفارش", "Order ref", "ltr"), ("picker", "جمع‌آور", "Picker", "text"),
+        ("checker", "کنترل‌گر", "Checker", "text"), ("completed_at", "پایان کنترل", "Check completed", "dt"),
+        ("product_id", "کد کالا", "Product ID", "ltr"), ("title", "کالا", "Product", "text"), ("aisle_title", "قفسه", "Aisle", "ltr"),
+        ("inc", "تعداد در کارتن", "Units per box", "int"),
+        ("ordered", "سفارش (کارتن)", "Ordered (boxes)", "int"), ("picked", "جمع‌آوری (کارتن)", "Picked (boxes)", "int"),
+        ("checked", "کنترل (کارتن)", "Checked (boxes)", "int"), ("extra", "اضافه برداشته‌شده", "Extra removed", "int"),
+        ("diff", "اختلاف کنترل با جمع‌آوری", "Found − picked", "int"), ("result", "نتیجه", "Result", "pick"),
     ],
     "reasons": [
         ("type", "نوع", "Type", "text"), ("reason", "دلیل", "Reason", "text"), ("category", "دسته", "Category", "text"),
@@ -57,7 +73,11 @@ C = {
         ("discrepancies", "مغایرت", "Discrepancies", "int"), ("open_discrepancies", "مغایرت باز", "Open discrepancies", "int"),
     ],
 }
-TITLES = {"checkers": ("عملکرد کنترل‌گرها", "Checker performance"), "pickers": ("گزارش جمع‌آورها", "Picker report"),
+PICK = {"fa": {"missing": "ثبت‌شده ولی روی پالت نبود", "unrecorded": "روی پالت بود ولی ثبت نشده",
+                "picked_extra": "بیشتر از سفارش جمع‌آوری شد", "declared_short": "کسری اعلام‌شده توسط جمع‌آور", "match": "مطابق"},
+         "en": {"missing": "Recorded but not on pallet", "unrecorded": "On pallet but not recorded",
+                "picked_extra": "Picked more than ordered", "declared_short": "Shortage declared by picker", "match": "Match"}}
+TITLES = {"picking": ("مقایسه جمع‌آوری و کنترل", "Picked vs checked"), "checkers": ("عملکرد کنترل‌گرها", "Checker performance"), "pickers": ("گزارش جمع‌آورها", "Picker report"),
           "reasons": ("مغایرت به تفکیک دلیل", "Discrepancies by reason"), "operations": ("پایش عملیات", "Operations"),
           "overview": ("عملکرد کلی", "Overall performance")}
 STATUS = {"fa": {"pending_assignment": "در انتظار تخصیص", "assigned": "تخصیص‌یافته", "in_progress": "در حال کنترل", "completed": "تکمیل‌شده", "cancelled": "لغوشده"},
@@ -89,6 +109,8 @@ def _cell(v, kind, lang):
         return None
     if kind == "dur":
         return _dur(v)
+    if kind == "pick":
+        return PICK[lang].get(v, v)
     if kind == "status":
         return STATUS[lang].get(v, v)
     if kind == "dt":
@@ -169,6 +191,17 @@ class PickersReport(_Report):
     def get(self, request):
         period, _, _ = self.params(request)
         return self.respond(request, services.pickers(period))
+
+
+class PickingReport(_Report):
+    name = "picking"
+
+    def get(self, request):
+        period, checker, _ = self.params(request)
+        qp = request.query_params
+        picker = qp.get("picker")
+        return self.respond(request, services.picking(period, picker if picker not in (None, "") else None, checker,
+                                                      qp.get("show", "diff"), qp.get("q", "")))
 
 
 class ReasonsReport(_Report):

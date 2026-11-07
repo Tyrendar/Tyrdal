@@ -10,7 +10,7 @@ from apps.checking.views import (
     ReasonViewSet,
 )
 from apps.orders.views import ImportViewSet, OrderViewSet
-from apps.reports.views import CheckersReport, OperationsReport, OverviewReport, PickersReport, ReasonsReport
+from apps.reports.views import CheckersReport, OperationsReport, OverviewReport, PickersReport, PickingReport, ReasonsReport
 
 router = DefaultRouter()
 router.register("users", UserViewSet, basename="user")
@@ -41,6 +41,7 @@ urlpatterns = [
     path("reports/checkers/", CheckersReport.as_view()),
     path("reports/pickers/", PickersReport.as_view()),
     path("reports/reasons/", ReasonsReport.as_view()),
+    path("reports/picking/", PickingReport.as_view()),
     path("reports/operations/", OperationsReport.as_view()),
     path("", include(router.urls)),
 ]

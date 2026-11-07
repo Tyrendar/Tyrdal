@@ -52,12 +52,12 @@ function reasonLabel(code: string, lang: "fa" | "en") {
 }
 
 export function OrderProgress({ done, total, issues }: { done: number; total: number; issues?: number }) {
-  const { num } = useI18n();
+  const { of } = useI18n();
   const pct = total ? Math.round((100 * done) / total) : 0;
   return (
     <div style={{ minWidth: 120 }}>
       <Progress percent={pct} size="small" status={issues ? "exception" : pct === 100 ? "success" : "active"}
-        format={() => `${num(done)}/${num(total)}`} />
+        format={() => of(done, total)} />
     </div>
   );
 }

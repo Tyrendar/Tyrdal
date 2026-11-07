@@ -36,7 +36,7 @@ panel's nginx also proxies `/api/`, so PDAs can use the same address.
 cd backend
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows; use .venv/bin on Linux
 .venv/Scripts/python manage.py migrate
-.venv/Scripts/python manage.py test apps                                 # 71 tests, SQLite
+.venv/Scripts/python manage.py test apps                                 # 84 tests, SQLite
 docker compose run --rm --no-deps -e DJANGO_DEBUG=true backend python manage.py test apps   # same tests on PostgreSQL
 ```
 
@@ -64,16 +64,20 @@ Custom; filter by checker (and picker on Reasons). Every tab exports to Excel (R
 |---|---|
 | Overview | Right now: waiting, assigned-not-started, being checked, open issues. In the period: orders assigned/checked/with discrepancies, SKUs, boxes checked/scanned, shortages (boxes + units), extras, not-in-order, avg time per order, avg active time, seconds per SKU, per-day table |
 | Checkers | Per checker: orders, SKUs, boxes scanned, active time, **boxes per active hour**, avg time per order, seconds per SKU, shortages, extras, not-in-order, double-reads, unknown scans, mistaken scans, corrections |
-| Pickers | Per picker: orders, SKUs, boxes; shortages split into stock vs picking reasons; extras; not-in-order; **error boxes and error rate** (non-stock shortages + extras + not-in-order) |
+| Pickers | Per picker: orders, SKUs, boxes; shortages split into stock vs picking reasons; extras; not-in-order; **error boxes and error rate** (non-stock shortages + extras + not-in-order); picked vs checked: boxes picked, shortage declared by the picker, recorded-but-not-on-pallet, on-pallet-but-not-recorded, **picking record accuracy** |
+| Picked vs checked | Per line: ordered, picked (picker's record from the file), checked, extra removed, difference, result: *recorded but not on pallet*, *on pallet but not recorded*, *picked more than ordered*, *shortage declared by picker*, *match*. Shows only differences by default |
 | Reasons | Discrepancies grouped by type and reason: lines, boxes, units, share |
 | Operations | Every order active in the period: imported, assigned, started, completed, wait before start, elapsed, active time, progress, discrepancies |
 
 Definitions: an order counts as *checked* in the period it was completed; volumes (SKUs, boxes,
 discrepancies) are taken from orders completed in the period so all tabs agree; *boxes scanned* counts
 accepted scans in the period (including unfinished orders); *active time* excludes gaps over 5 minutes
-(`CHECK_ACTIVE_GAP_SECONDS`); discrepancies that resolved themselves are not counted.
+(`CHECK_ACTIVE_GAP_SECONDS`); discrepancies that resolved themselves are not counted. *Picked vs checked* compares
+`packs_picked` from the order file with what the checker found on the pallet (counted + extra boxes removed); only orders
+whose file has picking data (any line with picked > 0) are compared. Picked quantities and the picker name can be added
+later by re-uploading the order file: unchanged lines/quantities are applied as *info updated*, even to completed orders.
 
-API: `GET /api/reports/{overview|checkers|pickers|reasons|operations}/?from=YYYY-MM-DD&to=YYYY-MM-DD&checker=&picker=&status=&q=`,
+API: `GET /api/reports/{overview|checkers|pickers|picking|reasons|operations}/?from=YYYY-MM-DD&to=YYYY-MM-DD&checker=&picker=&status=&q=&show=diff|all`,
 add `&export=xlsx&lang=fa|en` for Excel.
 
 ## PDA app (`pda/`)

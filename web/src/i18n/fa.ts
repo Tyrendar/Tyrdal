@@ -6,7 +6,7 @@ const fa = {
   },
   reports: {
     today: "امروز", week: "این هفته", month: "این ماه", custom: "بازه دلخواه", export: "خروجی اکسل",
-    tabs: { overview: "عملکرد کلی", checkers: "کنترل‌گرها", pickers: "جمع‌آورها", reasons: "دلایل مغایرت", operations: "پایش عملیات" },
+    tabs: { overview: "عملکرد کلی", checkers: "کنترل‌گرها", pickers: "جمع‌آورها", picking: "جمع‌آوری و کنترل", reasons: "دلایل مغایرت", operations: "پایش عملیات" },
     now: "وضعیت لحظه‌ای", period: "در بازه انتخابی", byDay: "به تفکیک روز", date: "تاریخ", allCheckers: "همه کنترل‌گرها",
     picker: "جمع‌آور", noPicker: "(بدون نام)", allPickers: "همه جمع‌آورها",
     orders_assigned: "سفارش تخصیص‌یافته", orders_checked: "سفارش کنترل‌شده", orders_with_discrepancies: "سفارش دارای مغایرت",
@@ -22,6 +22,19 @@ const fa = {
     imported: "بارگذاری", assigned: "تخصیص", started: "شروع", completed: "پایان", wait: "انتظار تا شروع", elapsed: "مدت کل",
     activeHint: "زمان فعال: فاصله بین اقدامات کنترل‌گر، بدون وقفه‌های بیش از ۵ دقیقه.",
     pickerHint: "خطای جمع‌آور = کسری با دلیل غیر از موجودی + کارتن اضافه + کالای خارج از سفارش.",
+    pickGroup: "جمع‌آوری در برابر کنترل", checkGroup: "نتیجه کنترل",
+    pick_orders: "سفارش با داده جمع‌آوری", boxes_picked: "کارتن ثبت‌شده توسط جمع‌آور",
+    pick_short_boxes: "کسری اعلام‌شده توسط جمع‌آور", missing_boxes: "ثبت‌شده ولی روی پالت نبود",
+    unrecorded_boxes: "روی پالت بود ولی ثبت نشده", pick_mismatch_lines: "قلم مغایر با جمع‌آوری", pick_accuracy: "دقت ثبت جمع‌آوری",
+    ordered: "سفارش", picked: "جمع‌آوری", checked: "کنترل", extraRemoved: "اضافه برداشته‌شده", diff: "اختلاف", result: "نتیجه",
+    found: "روی پالت", onlyDiffs: "فقط اقلام دارای اختلاف", allLines: "همه اقلام", pickSearch: "شماره سفارش، کد یا نام کالا",
+    pickingHint: "کارتن‌هایی که جمع‌آور ثبت کرده با کارتن‌هایی که کنترل‌گر روی پالت پیدا کرد (شمارش‌شده + اضافه برداشته‌شده) مقایسه می‌شود. اختلاف = روی پالت − ثبت جمع‌آور.",
+    noPickData: "{n} سفارش در این بازه داده جمع‌آوری ندارد (تعداد جمع‌آوری در فایل صفر است) و مقایسه نشد. فایل به‌روز را با تعداد جمع‌آوری دوباره بارگذاری کنید.",
+    truncated: "فقط ۵٬۰۰۰ ردیف اول نمایش داده شد؛ بازه را کوچک‌تر کنید.",
+    pickResult: {
+      missing: "ثبت‌شده ولی روی پالت نبود", unrecorded: "روی پالت بود ولی ثبت نشده", picked_extra: "بیشتر از سفارش جمع‌آوری شد",
+      declared_short: "کسری اعلام‌شده توسط جمع‌آور", match: "مطابق",
+    },
   },
   common: {
     save: "ذخیره", cancel: "انصراف", search: "جستجو", refresh: "بازخوانی", yes: "بله", no: "خیر", actions: "عملیات",
@@ -65,6 +78,7 @@ const fa = {
     product: "کالا", productId: "کد کالا", barcode: "بارکد", aisle: "راهرو", ordered: "سفارش", inc: "تعداد در کارتن",
     scanned: "اسکن‌شده", remaining: "باقیمانده", short: "کسری", extra: "اضافه", unitsEq: "معادل عدد",
     stock: "موجودی پس از سفارش", state: "وضعیت", discrepancy: "مغایرت",
+    picked: "جمع‌آوری‌شده", pickedHint: "تعداد ثبت‌شده توسط جمع‌آور در فایل؛ قرمز یعنی با کنترل نمی‌خواند.",
   },
   event: {
     kind: { scan: "اسکن", extra_decision: "تصمیم اضافه", declare_short: "اعلام کسری", set_reason: "ثبت دلیل", adjust: "اصلاح تعداد" },

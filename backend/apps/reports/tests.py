@@ -20,9 +20,10 @@ class ReportScenario(APITestCase):
         cls.sup = make_user("sup", "supervisor")
         cls.c1, cls.c2 = make_user("c1"), make_user("c2")
         import_orders([
-            line("1", "P1", (B1,), pack=1, inc=12, picker="Ali"),
-            line("1", "P2", (B2,), pack=3, inc=6, picker="Ali"),
-            line("1", "P3", (B3,), pack=2, inc=24, picker="Ali"),
+            # Ali's picking record: P1 picked 2 (1 over), P2 picked 2 (but 3 are there), P3 picked 2 (none there).
+            line("1", "P1", (B1,), pack=1, inc=12, picker="Ali", packs_picked=2),
+            line("1", "P2", (B2,), pack=3, inc=6, picker="Ali", packs_picked=2),
+            line("1", "P3", (B3,), pack=2, inc=24, picker="Ali", packs_picked=2),
             line("2", "P1", (B1,), pack=1, inc=12, customer="Store B", picker="Reza"),
         ])
         o1, o2 = Order.objects.get(reference_id="1"), Order.objects.get(reference_id="2")
@@ -93,6 +94,36 @@ class ReportScenario(APITestCase):
         self.assertEqual((ali["error_boxes"], ali["error_rate_pct"]), (1, round(100 / 6, 2)))
         self.assertEqual(reza["error_boxes"], 0)
 
+    def test_pickers_picked_vs_checked(self):
+        rows = {r["picker"]: r for r in self.get("pickers").data["rows"]}
+        ali, reza = rows["Ali"], rows["Reza"]
+        self.assertEqual((ali["pick_orders"], ali["pick_lines"], ali["boxes_picked"]), (1, 3, 6))
+        self.assertEqual((ali["pick_short_boxes"], ali["missing_boxes"], ali["unrecorded_boxes"]), (1, 2, 1))
+        self.assertEqual((ali["pick_mismatch_lines"], ali["pick_accuracy_pct"]), (2, 33.33))
+        # Reza's file has picked = 0 everywhere: no picking data, not "everything missing".
+        self.assertEqual((reza["pick_orders"], reza["missing_boxes"], reza["pick_accuracy_pct"]), (0, 0, None))
+
+    def test_picking_report(self):
+        d = self.get("picking").data
+        self.assertEqual((d["orders_compared"], d["orders_without_pick_data"]), (1, 1))
+        res = {r["product_id"]: r for r in d["rows"]}
+        self.assertEqual(res["P1"]["result"], "picked_extra")  # 1 counted + 1 extra removed = 2 picked
+        self.assertEqual((res["P2"]["result"], res["P2"]["diff"]), ("unrecorded", 1))
+        self.assertEqual((res["P3"]["result"], res["P3"]["diff"], res["P3"]["missing"]), ("missing", -2, 2))
+        self.assertEqual(d["summary"]["missing"], {"lines": 1, "boxes": 2})
+        self.assertEqual(d["totals"], {"lines": 3, "boxes_ordered": 6, "boxes_picked": 6, "boxes_found": 5})
+        self.assertEqual(self.get("picking", picker="Reza").data["rows"], [])
+
+    def test_pick_compare(self):
+        from apps.reports.services import pick_compare
+
+        self.assertEqual(pick_compare(5, 5, 5, 0)["result"], "match")
+        short = pick_compare(5, 3, 3, 0)
+        self.assertEqual((short["result"], short["pick_short"], short["missing"]), ("declared_short", 2, 0))
+        self.assertEqual(pick_compare(5, 5, 3, 0)["result"], "missing")  # picker said 5, only 3 on the pallet
+        self.assertEqual(pick_compare(5, 3, 4, 0)["result"], "unrecorded")
+        self.assertEqual(pick_compare(5, None, 0, 0)["result"], "declared_short")
+
     def test_reasons(self):
         rows = {r["code"]: r for r in self.get("reasons").data["rows"]}
         self.assertEqual((rows["no_stock"]["boxes"], rows["no_stock"]["units"]), (2, 48))
@@ -115,7 +146,7 @@ class ReportScenario(APITestCase):
 
         import openpyxl
 
-        for name in ("overview", "checkers", "pickers", "reasons", "operations"):
+        for name in ("overview", "checkers", "pickers", "picking", "reasons", "operations"):
             r = self.get(name, export="xlsx", lang="fa")
             self.assertIn("spreadsheetml", r["Content-Type"])
             ws = openpyxl.load_workbook(io.BytesIO(r.content)).active

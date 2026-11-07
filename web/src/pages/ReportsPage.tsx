@@ -1,17 +1,17 @@
 import { DownloadOutlined, InfoCircleOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
-import { App, Button, Card, Col, Input, Row, Segmented, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from "antd";
+import { Alert, App, Button, Card, Col, Input, Row, Segmented, Select, Statistic, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { download, get, qs } from "../api/client";
-import type { CheckerReportRow, OperationsRow, OrderStatus, PickerReportRow, ReasonReportRow, ReportOverview } from "../api/types";
+import type { CheckerReportRow, OperationsRow, OrderStatus, PickerReportRow, PickingReport, PickResult, ReasonReportRow, ReportOverview } from "../api/types";
 import { useCheckers } from "../components/AssignModal";
 import { DateRange, presetRange, type Preset } from "../components/DateRange";
 import { Ltr, StatusTag } from "../components/common";
 import { useI18n } from "../i18n";
 
-type TabKey = "overview" | "checkers" | "pickers" | "reasons" | "operations";
+type TabKey = "overview" | "checkers" | "pickers" | "picking" | "reasons" | "operations";
 const STATUSES: OrderStatus[] = ["pending_assignment", "assigned", "in_progress", "completed", "cancelled"];
 
 /** Sorts numbers with nulls last, so "no data" never ranks first. */
@@ -29,6 +29,7 @@ export default function ReportsPage() {
   const [picker, setPicker] = useState<string | undefined>();
   const [status, setStatus] = useState<string[]>([]);
   const [q, setQ] = useState("");
+  const [show, setShow] = useState<"diff" | "all">("diff");
   const [busy, setBusy] = useState(false);
 
   const range = useMemo<[string, string]>(
@@ -37,9 +38,10 @@ export default function ReportsPage() {
   );
   const params = {
     from: range[0], to: range[1], checker: tab === "pickers" ? undefined : checker,
-    picker: tab === "reasons" ? picker : undefined,
+    picker: tab === "reasons" || tab === "picking" ? picker : undefined,
     status: tab === "operations" && status.length ? status.join(",") : undefined,
-    q: tab === "operations" ? q : undefined,
+    q: tab === "operations" || tab === "picking" ? q : undefined,
+    show: tab === "picking" ? show : undefined,
   };
   const query = qs(params);
   const setParam = (k: string, v: string) => { const n = new URLSearchParams(sp); n.set(k, v); setSp(n, { replace: true }); };
@@ -75,6 +77,20 @@ export default function ReportsPage() {
           { key: "checkers", label: t("reports.tabs.checkers"), children: <Checkers query={query} enabled={tab === "checkers"} /> },
           { key: "pickers", label: t("reports.tabs.pickers"), children: <Pickers query={query} enabled={tab === "pickers"} /> },
           {
+            key: "picking", label: t("reports.tabs.picking"),
+            children: (
+              <>
+                <div className="oc-toolbar">
+                  <PickerSelect range={range} enabled={tab === "picking"} picker={picker} setPicker={setPicker} />
+                  <Input.Search allowClear placeholder={t("reports.pickSearch")} style={{ width: 260 }} onSearch={setQ} />
+                  <Segmented value={show} onChange={(v) => setShow(v as "diff" | "all")}
+                    options={[{ value: "diff", label: t("reports.onlyDiffs") }, { value: "all", label: t("reports.allLines") }]} />
+                </div>
+                <Picking query={query} enabled={tab === "picking"} />
+              </>
+            ),
+          },
+          {
             key: "reasons", label: t("reports.tabs.reasons"),
             children: <Reasons query={query} enabled={tab === "reasons"} range={range} picker={picker} setPicker={setPicker} />,
           },
@@ -101,11 +117,12 @@ function useReport<T>(name: string, query: string, enabled: boolean) {
   return useQuery({ queryKey: ["report", name, query], queryFn: () => get<T>(`reports/${name}/${query}`), enabled, staleTime: 15_000 });
 }
 
-function Stat({ title, value, color }: { title: string; value: string; color?: string }) {
+function Stat({ title, value, color, sub }: { title: string; value: string; color?: string; sub?: string }) {
   return (
     <Col flex="1 1 170px">
       <Card size="small" style={{ borderTop: `3px solid ${color ?? "#0f766e"}` }}>
         <Statistic title={title} value={value} valueStyle={{ color, fontWeight: 700, fontSize: 22 }} />
+        {sub && <Typography.Text type="secondary">{sub}</Typography.Text>}
       </Card>
     </Col>
   );
@@ -216,6 +233,13 @@ function Pickers({ query, enabled }: { query: string; enabled: boolean }) {
           n("extra_boxes", t("reports.extra_boxes"), "#9333ea"),
           n("not_in_order_boxes", t("reports.not_in_order_boxes"), "#9333ea"),
           n("short_stock_boxes", t("reports.short_stock")),
+          n("pick_orders", t("reports.pick_orders")),
+          n("boxes_picked", t("reports.boxes_picked")),
+          n("pick_short_boxes", t("reports.pick_short_boxes")),
+          n("missing_boxes", t("reports.missing_boxes"), "#dc2626"),
+          n("unrecorded_boxes", t("reports.unrecorded_boxes"), "#9333ea"),
+          n("pick_mismatch_lines", t("reports.pick_mismatch_lines")),
+          { title: t("reports.pick_accuracy"), dataIndex: "pick_accuracy_pct", sorter: byNum("pick_accuracy_pct"), render: (v) => <b>{pct(v)}</b> },
         ]}
       />
     </>
@@ -227,13 +251,11 @@ function Reasons({ query, enabled, range, picker, setPicker }: {
 }) {
   const { t, num, lang } = useI18n();
   const r = useReport<{ rows: ReasonReportRow[] }>("reasons", query, enabled);
-  const pickers = useReport<{ rows: PickerReportRow[] }>("pickers", qs({ from: range[0], to: range[1] }), enabled);
   const total = (r.data?.rows ?? []).reduce((s, x) => s + x.boxes, 0);
   return (
     <>
       <div className="oc-toolbar">
-        <Select allowClear placeholder={t("reports.allPickers")} style={{ width: 200 }} value={picker} onChange={setPicker}
-          options={(pickers.data?.rows ?? []).map((p) => ({ value: p.picker, label: p.picker || t("reports.noPicker") }))} />
+        <PickerSelect range={range} enabled={enabled} picker={picker} setPicker={setPicker} />
       </div>
       <Table<ReasonReportRow>
         rowKey={(x) => `${x.type}-${x.reason_id}`} size="middle" loading={r.isLoading} dataSource={r.data?.rows ?? []} pagination={false}
@@ -245,6 +267,77 @@ function Reasons({ query, enabled, range, picker, setPicker }: {
           { title: t("reports.boxes"), dataIndex: "boxes", sorter: byNum("boxes"), defaultSortOrder: "descend", render: (v) => <b>{num(v)}</b> },
           { title: "%", render: (_, x) => (total ? num(Math.round((100 * x.boxes) / total)) : t("common.none")) },
           { title: t("reports.units"), dataIndex: "units", sorter: byNum("units"), render: num },
+        ]}
+      />
+    </>
+  );
+}
+
+function PickerSelect({ range, enabled, picker, setPicker }: {
+  range: [string, string]; enabled: boolean; picker?: string; setPicker: (v?: string) => void;
+}) {
+  const { t } = useI18n();
+  const pickers = useReport<{ rows: PickerReportRow[] }>("pickers", qs({ from: range[0], to: range[1] }), enabled);
+  return (
+    <Select allowClear showSearch placeholder={t("reports.allPickers")} style={{ width: 200 }} value={picker} onChange={setPicker}
+      options={(pickers.data?.rows ?? []).map((p) => ({ value: p.picker, label: p.picker || t("reports.noPicker") }))} />
+  );
+}
+
+const PICK_COLOR: Record<PickResult, string> = {
+  missing: "red", unrecorded: "purple", picked_extra: "magenta", declared_short: "gold", match: "green",
+};
+
+function Picking({ query, enabled }: { query: string; enabled: boolean }) {
+  const { t, num, dateTime } = useI18n();
+  const nav = useNavigate();
+  const r = useReport<PickingReport>("picking", query, enabled);
+  const d = r.data;
+  const results: PickResult[] = ["missing", "unrecorded", "picked_extra", "declared_short", "match"];
+  const diff = (v: number) => (v === 0 ? num(0)
+    : <Typography.Text strong style={{ color: v < 0 ? "#dc2626" : "#9333ea" }}><Ltr>{v > 0 ? "+" : "−"}{num(Math.abs(v))}</Ltr></Typography.Text>);
+  return (
+    <>
+      <Typography.Paragraph type="secondary"><InfoCircleOutlined /> {t("reports.pickingHint")}</Typography.Paragraph>
+      {!!d?.orders_without_pick_data && (
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={t("reports.noPickData").replace("{n}", num(d.orders_without_pick_data))} />
+      )}
+      {d && (
+        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+          <Stat title={t("reports.pick_orders")} value={num(d.orders_compared)} />
+          <Stat title={`${t("reports.boxes")}: ${t("reports.ordered")}`} value={num(d.totals.boxes_ordered)} />
+          <Stat title={`${t("reports.boxes")}: ${t("reports.picked")}`} value={num(d.totals.boxes_picked)} />
+          <Stat title={`${t("reports.boxes")}: ${t("reports.found")}`} value={num(d.totals.boxes_found)} />
+        </Row>
+      )}
+      {d && (
+        <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+          {results.filter((k) => k !== "match").map((k) => (
+            <Stat key={k} title={t(`reports.pickResult.${k}`)} color={{ missing: "#dc2626", unrecorded: "#9333ea", picked_extra: "#c026d3", declared_short: "#ca8a04" }[k]}
+              value={`${num(d.summary[k].boxes)} ${t("reports.boxes")}`} sub={`${num(d.summary[k].lines)} ${t("reports.lines")}`} />
+          ))}
+        </Row>
+      )}
+      {d?.truncated && <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t("reports.truncated")} />}
+      <Table<PickingReport["rows"][number]>
+        className="oc-nowrap"
+        rowKey="line_id" size="small" loading={r.isLoading} dataSource={d?.rows ?? []} tableLayout="auto" scroll={{ x: "max-content" }}
+        pagination={{ pageSize: 100, showSizeChanger: false, showTotal: (n) => `${t("common.total")}: ${num(n)}` }}
+        columns={[
+          { title: t("order.reference"), dataIndex: "reference_id", fixed: "left", render: (v, x) => <a onClick={() => nav(`/orders/${x.order_id}`)}><Ltr>{v}</Ltr></a> },
+          { title: t("reports.picker"), dataIndex: "picker", render: (v) => v || t("reports.noPicker") },
+          { title: t("line.product"), dataIndex: "title", render: (v) => <span className="oc-clip" title={v}>{v}</span> },
+          { title: t("line.productId"), dataIndex: "product_id", render: (v) => <Ltr>{v}</Ltr> },
+          { title: t("line.aisle"), dataIndex: "aisle_title", render: (v) => <Ltr>{v}</Ltr> },
+          { title: t("reports.ordered"), dataIndex: "ordered", sorter: byNum("ordered"), render: num },
+          { title: t("reports.picked"), dataIndex: "picked", sorter: byNum("picked"), render: (v) => <b>{num(v)}</b> },
+          { title: t("reports.checked"), dataIndex: "checked", sorter: byNum("checked"), render: num },
+          { title: t("reports.extraRemoved"), dataIndex: "extra", render: (v) => (v ? <Typography.Text style={{ color: "#9333ea" }}>{num(v)}</Typography.Text> : t("common.none")) },
+          { title: t("reports.diff"), dataIndex: "diff", sorter: byNum("diff"), render: diff },
+          { title: t("reports.result"), dataIndex: "result", render: (v: PickResult) => <Tag color={PICK_COLOR[v]}>{t(`reports.pickResult.${v}`)}</Tag>,
+            filters: results.map((k) => ({ text: t(`reports.pickResult.${k}`), value: k })), onFilter: (v, x) => x.result === v },
+          { title: t("order.checker"), dataIndex: "checker", render: (v) => v ?? t("common.none") },
+          { title: t("reports.completed"), dataIndex: "completed_at", render: dateTime },
         ]}
       />
     </>

@@ -8,7 +8,7 @@ const en: Dict = {
   },
   reports: {
     today: "Today", week: "This week", month: "This month", custom: "Custom", export: "Export to Excel",
-    tabs: { overview: "Overview", checkers: "Checkers", pickers: "Pickers", reasons: "Reasons", operations: "Operations" },
+    tabs: { overview: "Overview", checkers: "Checkers", pickers: "Pickers", picking: "Picked vs checked", reasons: "Reasons", operations: "Operations" },
     now: "Right now", period: "In the selected period", byDay: "By day", date: "Date", allCheckers: "All checkers",
     picker: "Picker", noPicker: "(no name)", allPickers: "All pickers",
     orders_assigned: "Orders assigned", orders_checked: "Orders checked", orders_with_discrepancies: "Orders with discrepancies",
@@ -24,6 +24,19 @@ const en: Dict = {
     imported: "Imported", assigned: "Assigned", started: "Started", completed: "Completed", wait: "Wait before start", elapsed: "Elapsed",
     activeHint: "Active time: time between a checker's actions, excluding gaps over 5 minutes.",
     pickerHint: "Picker errors = shortages with a non-stock reason + extra boxes + items not in the order.",
+    pickGroup: "Picked vs checked", checkGroup: "Check result",
+    pick_orders: "Orders with picking data", boxes_picked: "Boxes picked (picker's record)",
+    pick_short_boxes: "Shortage declared by picker", missing_boxes: "Recorded but not on pallet",
+    unrecorded_boxes: "On pallet but not recorded", pick_mismatch_lines: "Lines picked ≠ checked", pick_accuracy: "Picking record accuracy",
+    ordered: "Ordered", picked: "Picked", checked: "Checked", extraRemoved: "Extra removed", diff: "Difference", result: "Result",
+    found: "On pallet", onlyDiffs: "Only lines with a difference", allLines: "All lines", pickSearch: "Order ref, product ID or name",
+    pickingHint: "Boxes the picker recorded are compared with boxes the checker found on the pallet (counted + extra removed). Difference = on pallet − picker's record.",
+    noPickData: "{n} orders in this period have no picking data (picked is 0 in the file) and were not compared. Re-upload the updated file with picked quantities.",
+    truncated: "Only the first 5,000 rows are shown; narrow the period.",
+    pickResult: {
+      missing: "Recorded but not on pallet", unrecorded: "On pallet but not recorded", picked_extra: "Picked more than ordered",
+      declared_short: "Shortage declared by picker", match: "Match",
+    },
   },
   common: {
     save: "Save", cancel: "Cancel", search: "Search", refresh: "Refresh", yes: "Yes", no: "No", actions: "Actions",
@@ -67,6 +80,7 @@ const en: Dict = {
     product: "Product", productId: "Product ID", barcode: "Barcode", aisle: "Aisle", ordered: "Ordered", inc: "Units/box",
     scanned: "Scanned", remaining: "Remaining", short: "Short", extra: "Extra", unitsEq: "Units equiv.",
     stock: "Stock after order", state: "State", discrepancy: "Discrepancy",
+    picked: "Picked", pickedHint: "Quantity the picker recorded in the file; red means it does not match the check.",
   },
   event: {
     kind: { scan: "Scan", extra_decision: "Extra decision", declare_short: "Declare shortage", set_reason: "Set reason", adjust: "Adjust quantity" },

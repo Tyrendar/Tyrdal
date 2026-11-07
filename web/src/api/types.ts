@@ -112,6 +112,22 @@ export interface PickerReportRow {
   picker: string; orders: number; skus: number; boxes_ordered: number;
   short_stock_lines: number; short_stock_boxes: number; short_picking_lines: number; short_picking_boxes: number;
   extra_boxes: number; not_in_order_boxes: number; not_in_order_lines: number; error_boxes: number; error_rate_pct: number | null;
+  pick_orders: number; pick_lines: number; boxes_picked: number; pick_short_boxes: number; missing_boxes: number;
+  unrecorded_boxes: number; pick_mismatch_lines: number; pick_accuracy_pct: number | null;
+}
+
+export type PickResult = "missing" | "unrecorded" | "picked_extra" | "declared_short" | "match";
+
+export interface PickingRow {
+  line_id: number; order_id: number; reference_id: string; picker: string; checker: string | null; completed_at: string;
+  product_id: string; title: string; aisle_title: string; inc: number; ordered: number; picked: number; checked: number;
+  extra: number; found: number; diff: number; pick_short: number; missing: number; unrecorded: number; result: PickResult;
+}
+
+export interface PickingReport {
+  summary: Record<PickResult, { lines: number; boxes: number }>;
+  totals: { lines: number; boxes_ordered: number; boxes_picked: number; boxes_found: number };
+  orders_compared: number; orders_without_pick_data: number; truncated: boolean; rows: PickingRow[];
 }
 
 export interface ReasonReportRow {

@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, ArrowRightOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Descriptions, Empty, Input, Modal, Space, Table, Tabs, Tag, Timeline, Typography } from "antd";
+import { App, Button, Card, Descriptions, Empty, Input, Modal, Space, Table, Tabs, Tag, Timeline, Tooltip, Typography } from "antd";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { get, post, type Page } from "../api/client";
@@ -14,7 +14,7 @@ const TABS: Tab[] = ["to_check", "ok", "issue"];
 
 export default function OrderDetailPage() {
   const { id } = useParams();
-  const { t, num, dateTime, duration, dir } = useI18n();
+  const { t, num, of, dateTime, duration, dir } = useI18n();
   const { can } = useAuth();
   const nav = useNavigate();
   const [assignMode, setAssignMode] = useState<"assign" | "reassign" | null>(null);
@@ -63,7 +63,7 @@ export default function OrderDetailPage() {
           <Descriptions.Item label={t("order.completed")}>{dateTime(o.completed_at)}</Descriptions.Item>
           <Descriptions.Item label={t("order.completedBy")}>{o.completed_by_name ?? t("common.none")}</Descriptions.Item>
           <Descriptions.Item label={t("order.duration")}>{duration(o.duration_seconds)}</Descriptions.Item>
-          <Descriptions.Item label={t("order.boxes")}>{num(o.boxes_scanned)} / {num(o.boxes_ordered)}</Descriptions.Item>
+          <Descriptions.Item label={t("order.boxes")}>{of(o.boxes_scanned, o.boxes_ordered)}</Descriptions.Item>
           <Descriptions.Item label={t("order.issues")}>{num(o.issues_total)} ({t("order.openIssues")}: {num(o.open_issues)})</Descriptions.Item>
           <Descriptions.Item label={t("order.progress")}><OrderProgress done={o.lines_done} total={o.lines_total} issues={o.open_issues} /></Descriptions.Item>
         </Descriptions>
@@ -82,7 +82,7 @@ export default function OrderDetailPage() {
                   <Tag bordered={false} color={k === "issue" ? "red" : k === "ok" ? "green" : "default"} style={{ marginInlineStart: 4 }}>{num(byTab(k).length)}</Tag>
                 </span>
               ),
-              children: <LinesTable lines={byTab(k)} tab={k} />,
+              children: <LinesTable lines={byTab(k)} tab={k} completed={o.status === "completed"} hasPicked={o.lines.some((l) => (l.packs_picked ?? 0) > 0)} />,
             })),
             { key: "timeline", label: t("order.timeline"), children: <EventsTable orderId={o.id} /> },
             {
@@ -111,7 +111,7 @@ export default function OrderDetailPage() {
   );
 }
 
-function LinesTable({ lines, tab }: { lines: OrderLine[]; tab: Tab }) {
+function LinesTable({ lines, tab, completed, hasPicked }: { lines: OrderLine[]; tab: Tab; completed: boolean; hasPicked: boolean }) {
   const { t, num, dateTime } = useI18n();
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
@@ -131,6 +131,13 @@ function LinesTable({ lines, tab }: { lines: OrderLine[]; tab: Tab }) {
           { title: t("line.aisle"), dataIndex: "aisle_title", sorter: (a, b) => a.aisle_rank - b.aisle_rank, render: (v) => <Ltr>{v}</Ltr> },
           { title: t("line.ordered"), dataIndex: "pack_ordered", render: (v) => num(v) },
           { title: t("line.inc"), dataIndex: "inc_ordered", render: (v) => num(v) },
+          ...(hasPicked ? [{
+            title: <Tooltip title={t("line.pickedHint")}>{t("line.picked")}</Tooltip>, dataIndex: "packs_picked",
+            render: (v: number | null, l: OrderLine) => {
+              const off = !l.is_unordered && completed && (v ?? 0) !== l.boxes_scanned + l.boxes_extra;
+              return <Typography.Text type={off ? "danger" : undefined} strong={off}>{num(v ?? 0)}</Typography.Text>;
+            },
+          }] : []),
           { title: t("line.scanned"), dataIndex: "boxes_scanned", render: (v) => num(v) },
           tab === "to_check"
             ? { title: t("line.remaining"), render: (_, l) => <Typography.Text strong>{num(l.boxes_short)}</Typography.Text> }

@@ -11,6 +11,10 @@ Definitions (all periods are warehouse-local dates, Asia/Tehran, `from`..`to` in
   than CHECKING["ACTIVE_GAP_SECONDS"] (breaks, waiting for pallets). *Elapsed time* is
   first scan → completion.
 - Discrepancies that resolved themselves (late boxes arrived) are not counted.
+- *Picked vs checked* compares the picker's recorded boxes (`packs_picked` from the order file)
+  with what the checker found on the pallet (counted + extra boxes removed). Only orders whose
+  file has picking data (any line with picked > 0) are compared; an export taken before picking
+  has 0 everywhere and would otherwise look like every line is wrong.
 """
 from __future__ import annotations
 
@@ -20,7 +24,7 @@ from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db.models import Avg, Count, Min, Q, Sum
+from django.db.models import Avg, Count, Exists, Min, OuterRef, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -28,7 +32,7 @@ from django.utils.dateparse import parse_date
 from apps.accounts.models import Role, User
 from apps.checking.engine import active_gaps, active_seconds_of
 from apps.checking.models import CheckEvent, Discrepancy, DiscrepancyStatus, EventKind, EventResult
-from apps.orders.models import Assignment, Order, OrderStatus
+from apps.orders.models import Assignment, Order, OrderLine, OrderStatus
 
 TZ = ZoneInfo(settings.TIME_ZONE)
 OPEN = (OrderStatus.PENDING_ASSIGNMENT, OrderStatus.ASSIGNED, OrderStatus.IN_PROGRESS)
@@ -223,6 +227,104 @@ def checkers(p: Period, checker: int | None = None) -> dict:
     return {"period": p.as_dict(), "rows": rows}
 
 
+# --- Picked vs checked -----------------------------------------------------------
+# Result of comparing one line, most serious first.
+PICK_RESULTS = ("missing", "unrecorded", "picked_extra", "declared_short", "match")
+
+
+def pick_compare(ordered: int, picked: int | None, checked: int, extra: int) -> dict:
+    """Ordered vs picked (picker's record) vs found (checker: counted + extra boxes removed).
+
+    missing:        picker recorded more boxes than were on the pallet (hidden shortage)
+    unrecorded:     more boxes on the pallet than the picker recorded
+    picked_extra:   picker recorded more than ordered and they were there (removed as extra)
+    declared_short: picker recorded fewer than ordered and that is what was there
+    match:          ordered = picked = found
+    """
+    picked = picked or 0
+    found = checked + extra
+    if found < picked:
+        result = "missing"
+    elif found > picked:
+        result = "unrecorded"
+    elif picked > ordered:
+        result = "picked_extra"
+    elif picked < ordered:
+        result = "declared_short"
+    else:
+        result = "match"
+    return {"found": found, "pick_short": max(ordered - picked, 0), "missing": max(picked - found, 0),
+            "unrecorded": max(found - picked, 0), "result": result}
+
+
+def _with_pick_data(orders):
+    return orders.filter(Exists(OrderLine.objects.filter(order=OuterRef("pk"), is_unordered=False, packs_picked__gt=0)))
+
+
+def _pick_lines(orders):
+    return (OrderLine.objects.filter(order__in=_with_pick_data(orders), is_unordered=False)
+            .select_related("order", "order__completed_by").order_by("order__completed_at", "order_id", "aisle_rank", "id"))
+
+
+PICKING_ROW_LIMIT = 5000
+
+
+def picking(p: Period, picker: str | None = None, checker: int | None = None, show: str = "diff", q: str = "") -> dict:
+    done = _completed(p, checker, picker)
+    if q:
+        done = done.filter(Q(reference_id__icontains=q) | Q(lines__product_id__icontains=q) | Q(lines__title__icontains=q)).distinct()
+    summary = {k: {"lines": 0, "boxes": 0} for k in PICK_RESULTS}
+    totals = {"lines": 0, "boxes_ordered": 0, "boxes_picked": 0, "boxes_found": 0}
+    rows, truncated = [], False
+    for ln in _pick_lines(done).iterator(chunk_size=2000):
+        picked = ln.packs_picked or 0
+        c = pick_compare(ln.pack_ordered, picked, ln.boxes_scanned, ln.boxes_extra)
+        s = summary[c["result"]]
+        s["lines"] += 1
+        s["boxes"] += {"missing": c["missing"], "unrecorded": c["unrecorded"], "declared_short": c["pick_short"],
+                       "picked_extra": picked - ln.pack_ordered}.get(c["result"], 0)
+        totals["lines"] += 1
+        totals["boxes_ordered"] += ln.pack_ordered
+        totals["boxes_picked"] += picked
+        totals["boxes_found"] += c["found"]
+        if show != "all" and c["result"] == "match":
+            continue
+        if len(rows) >= PICKING_ROW_LIMIT:
+            truncated = True
+            continue
+        o = ln.order
+        rows.append({
+            "line_id": ln.pk, "order_id": o.pk, "reference_id": o.reference_id, "picker": o.picker_name,
+            "checker": o.completed_by.display_name if o.completed_by else None, "completed_at": o.completed_at,
+            "product_id": ln.product_id, "title": ln.title, "aisle_title": ln.aisle_title, "inc": ln.inc_ordered,
+            "ordered": ln.pack_ordered, "picked": picked, "checked": ln.boxes_scanned, "extra": ln.boxes_extra,
+            **c, "diff": c["found"] - picked,
+        })
+    with_data = _with_pick_data(done).count()
+    return {"period": p.as_dict(), "summary": summary, "totals": totals, "orders_compared": with_data,
+            "orders_without_pick_data": done.count() - with_data, "truncated": truncated, "rows": rows}
+
+
+def _pick_by_picker(done) -> dict[str, dict]:
+    out: dict[str, dict] = defaultdict(lambda: defaultdict(int))
+    orders: dict[str, set] = defaultdict(set)
+    for ln in _pick_lines(done).iterator(chunk_size=5000):
+        name = ln.order.picker_name
+        picked = ln.packs_picked or 0
+        c = pick_compare(ln.pack_ordered, picked, ln.boxes_scanned, ln.boxes_extra)
+        a = out[name]
+        orders[name].add(ln.order_id)
+        a["pick_lines"] += 1
+        a["boxes_picked"] += picked
+        a["pick_short_boxes"] += c["pick_short"]
+        a["missing_boxes"] += c["missing"]
+        a["unrecorded_boxes"] += c["unrecorded"]
+        a["pick_matched_lines"] += int(c["found"] == picked)
+    for name, ids in orders.items():
+        out[name]["pick_orders"] = len(ids)
+    return out
+
+
 # --- Pickers ---------------------------------------------------------------------
 def pickers(p: Period) -> dict:
     done = _completed(p)
@@ -238,9 +340,11 @@ def pickers(p: Period) -> dict:
         else:
             a[f"{r['type']}_boxes"] += r["boxes"] or 0
             a[f"{r['type']}_lines"] += r["lines"]
+    pick = _pick_by_picker(done)
     rows = []
     for name, b in base.items():
         a = agg.get(name, {})
+        k = pick.get(name, {})
         errors = a.get("short_picking_boxes", 0) + a.get("extra_boxes", 0) + a.get("not_in_order_boxes", 0)
         rows.append({
             "picker": name or "",
@@ -251,6 +355,12 @@ def pickers(p: Period) -> dict:
             "not_in_order_lines": a.get("not_in_order_lines", 0),
             "error_boxes": errors,
             "error_rate_pct": _ratio(errors * 100, b["boxes_ordered"] or 0, 2),
+            # Picked vs checked (only orders with picking data in the file).
+            "pick_orders": k.get("pick_orders", 0), "pick_lines": k.get("pick_lines", 0),
+            "boxes_picked": k.get("boxes_picked", 0), "pick_short_boxes": k.get("pick_short_boxes", 0),
+            "missing_boxes": k.get("missing_boxes", 0), "unrecorded_boxes": k.get("unrecorded_boxes", 0),
+            "pick_mismatch_lines": k.get("pick_lines", 0) - k.get("pick_matched_lines", 0),
+            "pick_accuracy_pct": _ratio(k.get("pick_matched_lines", 0) * 100, k.get("pick_lines", 0), 2),
         })
     rows.sort(key=lambda r: (-(r["error_boxes"]), r["picker"]))
     return {"period": p.as_dict(), "rows": rows}
