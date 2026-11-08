@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
  */
 class Feedback(context: Context, private val scope: CoroutineScope) {
     private val tones = runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 100) }.getOrNull()
+    // Own generator so the warning is quieter than the normal beeps and never cuts them off.
+    private val warn = runCatching { ToneGenerator(AudioManager.STREAM_ALARM, WARN_VOLUME) }.getOrNull()
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= 31) {
         (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
     } else {
@@ -40,25 +42,40 @@ class Feedback(context: Context, private val scope: CoroutineScope) {
         }
     }
 
-    /** Repeats until the checker answers the extra / not-in-order dialog. */
+    /**
+     * Extra / not-in-order warning: a short "pip-pip-pip" with a light double buzz, then a few
+     * quiet reminders while the dialog is still open, then silence (the dialog stays on screen).
+     */
     fun startAlarm() {
         alarm?.cancel()
         alarm = scope.launch {
-            var n = 0
-            while (isActive && n < 20) {
-                tone(ToneGenerator.TONE_CDMA_HIGH_PBX_L, 700)
-                vibrate(longArrayOf(0, 500))
-                delay(1500)
-                n++
+            repeat(1 + REMINDERS) { i ->
+                if (!isActive) return@launch
+                if (i > 0) delay(REMINDER_EVERY_MS)
+                chirp()
+                if (i == 0) vibrate(longArrayOf(0, 80, 90, 80))
             }
         }
     }
 
-    fun stopAlarm() { alarm?.cancel(); alarm = null; tones?.stopTone() }
+    fun stopAlarm() { alarm?.cancel(); alarm = null; warn?.stopTone() }
+
+    private suspend fun chirp() {
+        repeat(3) {
+            runCatching { warn?.startTone(ToneGenerator.TONE_PROP_BEEP, 70) }
+            delay(160)
+        }
+    }
 
     private fun tone(t: Int, ms: Int) { runCatching { tones?.startTone(t, ms) } }
 
     private fun vibrate(pattern: LongArray) {
         runCatching { vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1)) }
+    }
+
+    private companion object {
+        const val WARN_VOLUME = 70
+        const val REMINDERS = 2
+        const val REMINDER_EVERY_MS = 5_000L
     }
 }
